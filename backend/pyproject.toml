@@ -1,0 +1,64 @@
+[project]
+name = "ai-transcript-app"
+version = "0.1.0"
+description = "AI-powered voice transcription with Whisper and LLM cleaning"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "faster-whisper>=1.2.0",
+    "numpy>=2.3.4",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-multipart>=0.0.9",
+    "openai>=1.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "black>=24.0.0",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+exclude = '''
+/(
+    \.venv
+  | __pycache__
+  | \.pytest_cache
+  | \.ruff_cache
+  | \.git
+)/
+'''
+
+[tool.ruff]
+line-length = 88  # Match Black
+target-version = "py312"
+exclude = [".venv", "__pycache__", ".pytest_cache", "*.egg-info"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort (import sorting)
+    "N",      # pep8-naming
+    "UP",     # pyupgrade (modern Python syntax)
+    "B",      # flake8-bugbear (common bugs)
+    "C4",     # flake8-comprehensions
+    "DTZ",    # flake8-datetimez
+    "T10",    # flake8-debugger (no debugger statements)
+    "FA",     # flake8-future-annotations
+    "ISC",    # flake8-implicit-str-concat
+    "RET",    # flake8-return
+    "SIM",    # flake8-simplify
+]
+ignore = [
+    "E501",   # Line too long (handled by Black formatter)
+    "W191",   # Indentation contains tabs (Black uses spaces)
+    "E111",   # Indentation is not a multiple of 4 (Black handles this)
+    "E114",   # Indentation is not a multiple of 4 (comment) (Black handles this)
+    "E117",   # Over-indented (Black handles this)
+]
