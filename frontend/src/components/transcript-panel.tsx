@@ -138,6 +138,7 @@ export function TranscriptPanel() {
         setRawText(transcribeData.text || "");
         setIsProcessing(false);
 
+        let cleaned: string | undefined;
         if (useLLM && transcribeData.text) {
           setIsCleaningWithLLM(true);
           const cleanResponse = await fetch("/api/clean", {
@@ -153,19 +154,21 @@ export function TranscriptPanel() {
             throw new Error(`Cleaning failed: ${cleanResponse.statusText}`);
             
           const cleanData = (await cleanResponse.json()) as CleanResponse;
-          if (cleanData.success && cleanData.text)
+          if (cleanData.success && cleanData.text) {
+            cleaned = cleanData.text;
             setCleanedText(cleanData.text);
-            
+          }
+          
           setIsCleaningWithLLM(false);
         }
         
         // Save to history
-        const titleSource = useLLM && cleanedText ? cleanedText : transcribeData.text || "";
+        const titleSource = (cleaned ?? transcribeData.text) || "";
         const title = titleSource.trim().split(/\s+/).slice(0, 8).join(" ");
         addTranscript({
           title: title || "Transcript",
           rawText: transcribeData.text || "",
-          cleanedText: useLLM ? cleanedText : undefined,
+          cleanedText: cleaned,
         });
         
       } catch (err) {
@@ -175,7 +178,7 @@ export function TranscriptPanel() {
         setIsCleaningWithLLM(false);
       }
     },
-    [useLLM, systemPrompt, cleanedText]
+    [useLLM, systemPrompt]
   );
 
   const handleToggleListening = React.useCallback(async () => {
@@ -225,6 +228,7 @@ export function TranscriptPanel() {
         setDisplayedCleanedText(null);
         setIsProcessing(false);
         
+        let cleaned: string | undefined;
         if (useLLM) {
           setIsCleaningWithLLM(true);
           const cleanResponse = await fetch("/api/clean", {
@@ -240,18 +244,20 @@ export function TranscriptPanel() {
             throw new Error(`Cleaning failed: ${cleanResponse.statusText}`);
             
           const cleanData = (await cleanResponse.json()) as CleanResponse;
-          if (cleanData.success && cleanData.text)
+          if (cleanData.success && cleanData.text) {
+            cleaned = cleanData.text;
             setCleanedText(cleanData.text);
+          }
           setIsCleaningWithLLM(false);
         }
         
         // Save to history
-        const titleSource = useLLM && cleanedText ? cleanedText : text;
+        const titleSource = (cleaned ?? text) || "";
         const title = titleSource.trim().split(/\s+/).slice(0, 8).join(" ");
         addTranscript({
           title: title || "Transcript",
           rawText: text,
-          cleanedText: useLLM ? cleanedText : undefined,
+          cleanedText: cleaned,
         });
         
       } catch (err) {
@@ -261,7 +267,7 @@ export function TranscriptPanel() {
         setIsCleaningWithLLM(false);
       }
     },
-    [useLLM, systemPrompt, cleanedText]
+    [useLLM, systemPrompt]
   );
 
   // --- Keyboard Shortcuts ---
