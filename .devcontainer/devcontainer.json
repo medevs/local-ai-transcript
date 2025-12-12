@@ -1,0 +1,78 @@
+{
+  "name": "AI Transcript App",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/ai-transcript-app",
+
+  // Configure tool-specific properties
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // Python - Backend
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "charliermarsh.ruff",
+        // TypeScript/JavaScript - Frontend
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        // Docker
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        // Devcontainer-specific Python interpreter path
+        "python.defaultInterpreterPath": "/workspaces/ai-transcript-app/backend/.venv/bin/python",
+        "python.terminal.activateEnvironment": true
+        // Other settings are in .vscode/settings.json and apply automatically
+      }
+    }
+  },
+
+  // Ports are forwarded in docker-compose.yml
+  "forwardPorts": [8000, 3000, 11434],
+  "portsAttributes": {
+    "8000": {
+      "label": "FastAPI Backend",
+      "onAutoForward": "notify"
+    },
+    "3000": {
+      "label": "React Frontend",
+      "onAutoForward": "notify"
+    },
+    "11434": {
+      "label": "Ollama API",
+      "onAutoForward": "silent"
+    }
+  },
+
+  // Install dependencies after container is created
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  // Use a non-root user
+  "remoteUser": "vscode",
+
+  // Features to install
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": false,
+      "installOhMyZsh": false,
+      "username": "vscode",
+      "uid": "1000",
+      "gid": "1000",
+      "upgradePackages": true
+    },
+    "ghcr.io/devcontainers/features/git:1": {
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {
+      "version": "latest"
+    }
+  },
+  
+  // In case Codespaces is used a decent machine is required for local AI
+  "hostRequirements": {
+    "cpus": 8,
+    "memory": "32gb",
+    "storage": "64gb"
+  }
+}
