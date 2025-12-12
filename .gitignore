@@ -1,0 +1,27 @@
+# Node / frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.eslintcache
+
+# Python / backend
+.venv/
+backend/.venv/
+__pycache__/
+*.pyc
+
+# Env & local config
+.env
+backend/.env
+.env.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Build artifacts
+dist/
+*.log
