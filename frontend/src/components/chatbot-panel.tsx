@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { getTranscripts } from "@/lib/history"
@@ -43,28 +42,26 @@ export function ChatbotPanel() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Chatbot</CardTitle>
-        <CardDescription>Chat with your latest transcript</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <div className="h-64 overflow-auto rounded-md border p-2">
-          {messages.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Ask a question about your transcript</p>
-          ) : (
-            messages.map((m, i) => (
-              <div key={i} className={`mb-2 ${m.role === "user" ? "text-foreground" : "text-muted-foreground"}`}>
-                <span className="font-medium">{m.role === "user" ? "You" : "Assistant"}:</span> {m.content}
-              </div>
-            ))
-          )}
-        </div>
-        <div className="flex gap-2">
-          <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type a message..." onKeyDown={(e) => { if (e.key === "Enter") send() }} />
-          <Button onClick={send} disabled={loading}>{loading ? "Sending..." : "Send"}</Button>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex h-full w-full flex-col">
+      <div className="px-3 pt-3">
+        <div className="text-sm font-semibold">Chatbot</div>
+        <div className="text-xs text-muted-foreground">Chat with your latest transcript</div>
+      </div>
+      <div className="flex-1 overflow-auto rounded-md border m-3 p-2">
+        {messages.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Ask a question about your transcript</p>
+        ) : (
+          messages.map((m, i) => (
+            <div key={i} className={`mb-2 ${m.role === "user" ? "text-foreground" : "text-muted-foreground"}`}>
+              <span className="font-medium">{m.role === "user" ? "You" : "Assistant"}:</span> {m.content}
+            </div>
+          ))
+        )}
+      </div>
+      <div className="flex gap-2 p-3 border-t">
+        <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type a message..." onKeyDown={(e) => { if (e.key === "Enter") send() }} />
+        <Button onClick={send} disabled={loading}>{loading ? "Sending..." : "Send"}</Button>
+      </div>
+    </div>
   )
 }
