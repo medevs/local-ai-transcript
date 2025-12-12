@@ -113,6 +113,7 @@ curl -s -X POST http://localhost:8000/api/clean \
 - `src/App.tsx` – Main layout with header, sidebar, and two-panel grid
 - `src/components/site-header.tsx` – App title and GitHub link
 - `src/components/app-sidebar.tsx` – Transcript history, “New Transcript” button, theme toggle
+- `src/components/nav-documents.tsx` – Transcript list with open and delete actions
 - `src/components/transcript-panel.tsx` – Record/upload/paste, LLM cleaning, copy buttons
 - `src/components/chatbot-panel.tsx` – Chat using latest transcript context
 - `src/lib/history.ts` – Local storage for transcripts, update events
