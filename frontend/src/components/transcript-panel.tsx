@@ -6,7 +6,7 @@ import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 import { VoiceRecorder } from "@/components/transcript/voice-recorder";
 import { InputMethods } from "@/components/transcript/input-methods";
 import { TranscriptResults } from "@/components/transcript/transcript-results";
-import { SettingsSection } from "@/components/transcript/settings-section";
+ 
 
 type TranscriptionResponse = {
   success: boolean;
@@ -36,7 +36,6 @@ export function TranscriptPanel() {
   const [error, setError] = React.useState<string | null>(null);
   const [useLLM, setUseLLM] = React.useState(true);
   const [systemPrompt, setSystemPrompt] = React.useState("");
-  const [isLoadingPrompt, setIsLoadingPrompt] = React.useState(true);
   const [isCleaningWithLLM, setIsCleaningWithLLM] = React.useState(false);
   const [displayedCleanedText, setDisplayedCleanedText] = React.useState<string | null>(null);
 
@@ -85,20 +84,34 @@ export function TranscriptPanel() {
     return () => clearInterval(intervalId);
   }, [cleanedText]);
 
-  // --- API Interactions ---
+  // --- Settings Integration ---
   React.useEffect(() => {
-    const loadPrompt = async () => {
+    const apply = (detail?: unknown) => {
       try {
-        const res = await fetch("/api/system-prompt");
-        const data = (await res.json()) as SystemPromptResponse;
-        setSystemPrompt(data.default_prompt);
-      } catch {
-        setError("Failed to load system prompt");
-      } finally {
-        setIsLoadingPrompt(false);
-      }
+        const d = detail as { enableAI?: boolean | string; systemPrompt?: string } | null;
+        const v = d?.enableAI ?? localStorage.getItem("settings.enableAI");
+        const p = d?.systemPrompt ?? localStorage.getItem("settings.systemPrompt");
+        if (v !== null) setUseLLM(v === true || v === "true");
+        if (typeof p === "string") setSystemPrompt(p);
+      } catch { void 0 }
     };
-    void loadPrompt();
+    const handler = (e: Event) => {
+      const ce = e as CustomEvent;
+      apply(ce.detail);
+    };
+    window.addEventListener("settings:updated", handler as EventListener);
+    apply();
+    (async () => {
+      if (!localStorage.getItem("settings.systemPrompt")) {
+        try {
+          const res = await fetch("/api/system-prompt");
+          const data = (await res.json()) as SystemPromptResponse;
+          setSystemPrompt(data.default_prompt);
+          localStorage.setItem("settings.systemPrompt", data.default_prompt);
+        } catch { void 0 }
+      }
+    })();
+    return () => window.removeEventListener("settings:updated", handler as EventListener);
   }, []);
 
   const uploadAudio = React.useCallback(
@@ -353,14 +366,7 @@ export function TranscriptPanel() {
         </div>
       )}
 
-      {/* Settings */}
-      <SettingsSection
-        useLLM={useLLM}
-        onUseLLMChange={setUseLLM}
-        systemPrompt={systemPrompt}
-        onSystemPromptChange={setSystemPrompt}
-        isLoadingPrompt={isLoadingPrompt}
-      />
+      
 
       {/* Input Methods (Upload / Paste) */}
       <InputMethods
