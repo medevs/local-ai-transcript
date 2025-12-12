@@ -22,8 +22,6 @@ import { getTranscripts, onTranscriptsChange } from "@/lib/history";
 import { Toggle } from "@/components/ui/toggle";
 import { PlusCircleIcon } from "lucide-react";
 
-// no-op
-
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [docs, setDocs] = React.useState(
     getTranscripts().map((t) => ({
