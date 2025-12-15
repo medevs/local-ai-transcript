@@ -1,0 +1,65 @@
+services:
+  # Frontend (React + Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Backend (FastAPI + Whisper)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      # Persist SQLite database
+      - backend-data:/app/data
+      # Persist Whisper models (downloaded on first run)
+      - whisper-models:/root/.cache/huggingface
+    env_file:
+      - ./backend/.env
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # Whisper model loading takes time
+
+  # Ollama (Local LLM) - Uncomment to use local LLM
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   volumes:
+  #     - ollama-models:/root/.ollama
+  #   restart: unless-stopped
+  #   networks:
+  #     - app-network
+  #   # For GPU support (NVIDIA), uncomment:
+  #   # deploy:
+  #   #   resources:
+  #   #     reservations:
+  #   #       devices:
+  #   #         - driver: nvidia
+  #   #           count: all
+  #   #           capabilities: [gpu]
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  backend-data:
+    name: transcript-app-data
+  whisper-models:
+    name: transcript-app-whisper
+  # ollama-models:
+  #   name: transcript-app-ollama
