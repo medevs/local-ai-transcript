@@ -1,58 +1,70 @@
-export type TranscriptItem = {
-  id: string;
-  title: string;
-  rawText: string;
-  cleanedText?: string | null;
-  createdAt: string;
-};
+import {
+  createTranscript as apiCreateTranscript,
+  deleteTranscript as apiDeleteTranscript,
+  fetchTranscript,
+  fetchTranscripts,
+  type Transcript,
+} from "./api-client";
 
-const STORAGE_KEY = "transcripts";
+// Re-export the Transcript type for backwards compatibility
+export type TranscriptItem = Transcript;
 
-function read(): TranscriptItem[] {
+// Event for notifying components of transcript changes
+export function dispatchTranscriptsUpdate() {
+  window.dispatchEvent(new CustomEvent("transcripts:update"));
+}
+
+export function dispatchTranscriptsNew() {
+  window.dispatchEvent(new CustomEvent("transcripts:new"));
+}
+
+export async function getTranscripts(): Promise<TranscriptItem[]> {
   try {
-    const v = localStorage.getItem(STORAGE_KEY);
-    return v ? (JSON.parse(v) as TranscriptItem[]) : [];
-  } catch {
+    return await fetchTranscripts(100);
+  } catch (error) {
+    console.error("Failed to fetch transcripts:", error);
     return [];
   }
 }
 
-function write(items: TranscriptItem[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+export async function getTranscriptById(
+  id: string
+): Promise<TranscriptItem | undefined> {
+  try {
+    return await fetchTranscript(id);
+  } catch {
+    return undefined;
+  }
 }
 
-export function getTranscripts(): TranscriptItem[] {
-  return read().sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+export async function addTranscript(input: {
+  title: string;
+  rawText: string;
+  cleanedText?: string | null;
+}): Promise<TranscriptItem> {
+  const transcript = await apiCreateTranscript({
+    title: input.title,
+    rawText: input.rawText,
+    cleanedText: input.cleanedText,
+  });
+  dispatchTranscriptsUpdate();
+  return transcript;
 }
 
-export function getTranscriptById(id: string): TranscriptItem | undefined {
-  return read().find((t) => t.id === id);
+export async function deleteTranscript(id: string): Promise<void> {
+  await apiDeleteTranscript(id);
+  dispatchTranscriptsUpdate();
+
+  // If we're viewing this transcript, clear URL and reset panel
+  const m = window.location.hash.match(/^#t-(.+)/);
+  if (m && m[1] === id) {
+    window.location.hash = "";
+    dispatchTranscriptsNew();
+  }
 }
 
-export function addTranscript(input: Omit<TranscriptItem, "id" | "createdAt">) {
-  const now = new Date().toISOString();
-  const id = `${Date.now()}`;
-  const item: TranscriptItem = { id, createdAt: now, ...input };
-  const items = read();
-  items.unshift(item);
-  write(items.slice(0, 100));
-  window.dispatchEvent(new CustomEvent("transcripts:update"));
-}
-
-export function onTranscriptsChange(cb: () => void) {
+export function onTranscriptsChange(cb: () => void): () => void {
   const handler = () => cb();
   window.addEventListener("transcripts:update", handler);
   return () => window.removeEventListener("transcripts:update", handler);
-}
-
-export function deleteTranscript(id: string) {
-  const items = read().filter((t) => t.id !== id);
-  write(items);
-  window.dispatchEvent(new CustomEvent("transcripts:update"));
-  const m = window.location.hash.match(/^#t-(\d+)/);
-  if (m && m[1] === id) {
-    window.dispatchEvent(new CustomEvent("transcripts:new"));
-  }
 }

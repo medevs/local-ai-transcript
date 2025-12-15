@@ -12,6 +12,7 @@ interface UseAudioRecorderReturn {
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<Blob | null>;
   cancelRecording: () => void;
+  resetTimer: () => void;
   recordingTime: number;
   error: string | null;
   volume: number;
@@ -219,6 +220,13 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     setVolume(0);
   }, [isStarting, cleanup]);
 
+  // Reset timer without affecting recording state
+  const resetTimer = React.useCallback(() => {
+    setRecordingTime(0);
+    setWaveformData(Array(32).fill(0));
+    setVolume(0);
+  }, []);
+
   // Cleanup on unmount
   React.useEffect(() => {
     return cleanup;
@@ -230,6 +238,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     startRecording,
     stopRecording,
     cancelRecording,
+    resetTimer,
     recordingTime,
     error,
     volume,
