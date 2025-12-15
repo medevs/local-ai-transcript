@@ -2,46 +2,124 @@
 
 An AI-powered voice transcription application with a React frontend and FastAPI backend. Records audio in the browser, transcribes with Whisper, optionally cleans text with an LLM, and lets you chat about the latest transcript.
 
-**Highlights**
+## Features
 
 - Browser recording and file upload
 - Local Whisper speech-to-text
 - Optional LLM cleaning (OpenAI API-compatible providers)
-- Persistent transcript history and copy-to-clipboard
-- Two-panel dashboard: Transcript (70%) + Chatbot (30%)
+- Streaming chat with transcript context
+- Export to Markdown, TXT, or PDF
+- Persistent transcript history (SQLite)
+- Keyboard shortcuts (press `?` to see all)
+- Dark/light theme
 
 ---
 
-## Setup
+## Quick Start with Docker
 
-### Dev Container (Recommended)
-
-- Install Docker Desktop and VS Code with the Dev Containers extension
-- Open the project in VS Code and choose “Reopen in Container”
-- The container builds, installs dependencies, creates `backend/.env`, and starts an Ollama service
-
-### Manual Setup
-
-- Backend: Python 3.12+, install [uv](https://docs.astral.sh/uv/)
-- Frontend: Node.js 20+, `npm` or `pnpm`
-- Copy `backend/.env.example` to `backend/.env` and configure provider and model
-- Start an LLM server (Ollama, LM Studio, or OpenAI-compatible)
-
-Commands:
+The easiest way to run the app is with Docker Compose:
 
 ```bash
-# Backend
-cd backend
-uv sync && uv run uvicorn app:app --reload --port 8000 --host 0.0.0.0 --timeout-keep-alive 600
+# Clone the repository
+git clone <repo-url>
+cd local-ai-transcript-app
 
-# Frontend (pnpm)
-cd frontend
-pnpm install && pnpm run dev
-# or with npm
-npm install && npm run dev
+# Start all services (frontend, backend, Ollama)
+docker compose up -d
+
+# Wait for services to start (Ollama will download the model on first run)
+# This can take a few minutes depending on your internet speed
 
 # Open the app
-http://localhost:5173
+open http://localhost:3000
+```
+
+### Docker Services
+
+| Service | Port | Description |
+|---------|------|-------------|
+| Frontend | 3000 | React app served via Nginx |
+| Backend | 8000 | FastAPI with Whisper |
+| Ollama | 11434 | Local LLM server |
+
+### Configuration
+
+Create a `.env` file in the root directory to customize:
+
+```bash
+# LLM Model (default: llama2)
+LLM_MODEL=llama2
+
+# Whisper Model (default: base.en)
+# Options: tiny, tiny.en, base, base.en, small, small.en, medium, large-v3
+WHISPER_MODEL=base.en
+
+# Optional: Fallback to OpenAI if Ollama fails
+LLM_FALLBACK_BASE_URL=https://api.openai.com/v1
+LLM_FALLBACK_API_KEY=sk-your-key
+LLM_FALLBACK_MODEL=gpt-3.5-turbo
+```
+
+### Docker Commands
+
+```bash
+# Start services
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop services
+docker compose down
+
+# Rebuild after code changes
+docker compose up -d --build
+
+# Remove all data (reset)
+docker compose down -v
+```
+
+---
+
+## Manual Setup (Development)
+
+### Prerequisites
+
+- Python 3.12+
+- Node.js 20+
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- An LLM server (Ollama, LM Studio, or OpenAI API key)
+
+### Backend Setup
+
+```bash
+cd backend
+
+# Copy environment template
+cp .env.example .env
+
+# Edit .env with your LLM configuration
+# For Ollama: LLM_BASE_URL=http://localhost:11434/v1
+
+# Install dependencies
+uv sync
+
+# Start the server
+uv run uvicorn app:app --reload --port 8000
+```
+
+### Frontend Setup
+
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start dev server
+npm run dev
+
+# Open http://localhost:5173
 ```
 
 ---
@@ -49,107 +127,80 @@ http://localhost:5173
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                         Frontend                         │
-│  React + Vite + TypeScript                               │
-│  - App.tsx (layout)                                      │
-│  - SiteHeader, AppSidebar                                │
-│  - TranscriptPanel (record/upload/paste + LLM clean)     │
-│  - ChatbotPanel (contextual chat on latest transcript)   │
-│  - lib/history (localStorage transcript store)           │
-│  - shadcn-style UI components (button, card, etc.)       │
-│                                                          │
-│  Vite dev server proxies `/api/*` to backend:8000        │
-└───────────────▲──────────────────────────────────────────┘
-                │
-                │ HTTP (fetch)
-                │
-┌───────────────┴──────────────────────────────────────────┐
-│                         Backend                          │
-│  FastAPI                                                  │
-│  - app.py (routes: status, system-prompt, transcribe,     │
-│            clean, chat)                                   │
-│  - transcription.py (Whisper + LLM cleaning service)      │
-│  - .env (LLM/Whisper config)                              │
-│  - pyproject.toml (deps, tooling)                         │
-└──────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                         Frontend                            │
+│  React 19 + Vite + TypeScript + Tailwind                   │
+│  └── Nginx (production) or Vite dev server                 │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ HTTP
+┌───────────────────────┴─────────────────────────────────────┐
+│                         Backend                             │
+│  FastAPI + SQLAlchemy + SQLite                             │
+│  ├── Whisper (speech-to-text)                              │
+│  └── OpenAI-compatible LLM client                          │
+└───────────────────────┬─────────────────────────────────────┘
+                        │
+┌───────────────────────┴─────────────────────────────────────┐
+│                         Ollama                              │
+│  Local LLM server (llama2, mistral, etc.)                  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-Proxy config: `frontend/vite.config.ts` maps `/api` to `http://localhost:8000`.
+## API Endpoints
 
----
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/status` | Service health check |
+| GET | `/api/transcripts` | List all transcripts |
+| POST | `/api/transcripts` | Create transcript |
+| GET | `/api/transcripts/:id` | Get transcript |
+| DELETE | `/api/transcripts/:id` | Delete transcript |
+| GET | `/api/transcripts/:id/export?format=md\|txt\|pdf` | Export transcript |
+| POST | `/api/transcribe` | Transcribe audio file |
+| POST | `/api/clean` | Clean text with LLM |
+| POST | `/api/generate-title` | Generate AI title |
+| POST | `/api/chat` | Chat (non-streaming) |
+| POST | `/api/chat/stream` | Chat (SSE streaming) |
 
-## Backend API
+## Keyboard Shortcuts
 
-Base URL: `http://localhost:8000`
+| Key | Action |
+|-----|--------|
+| `V` | Hold to record, release to stop |
+| `Ctrl/⌘ + N` | New transcript |
+| `Ctrl/⌘ + Enter` | Submit text input |
+| `?` | Show all shortcuts |
+| `Escape` | Close dialogs |
 
-- `GET /api/status`
-  - Returns service readiness and configured models
-- `GET /api/system-prompt`
-  - Returns default system prompt text
-- `POST /api/transcribe` (multipart form, `audio` file)
-  - Returns `{ success: boolean, text?: string }`
-- `POST /api/clean` (JSON)
-  - Body: `{ text: string, system_prompt?: string }`
-  - Returns `{ success: boolean, text?: string }`
-- `POST /api/chat` (JSON)
-  - Body: `{ message: string, context?: string }`
-  - Returns `{ reply: string }`
+## LLM Providers
 
-Example:
+The app works with any OpenAI API-compatible provider:
 
-```bash
-curl -s http://localhost:8000/api/status
+- **Ollama** (default, local): `http://localhost:11434/v1`
+- **OpenAI**: `https://api.openai.com/v1`
+- **LM Studio**: `http://localhost:1234/v1`
+- **Groq**: `https://api.groq.com/openai/v1`
+- **Together AI**: `https://api.together.xyz/v1`
 
-curl -s -X POST http://localhost:8000/api/clean \
-  -H "Content-Type: application/json" \
-  -d '{"text":"hello wrold","system_prompt":"fix typos"}'
-```
-
----
-
-## Frontend Components
-
-- `src/App.tsx` – Main layout with header, sidebar, and two-panel grid
-- `src/components/site-header.tsx` – App title and GitHub link
-- `src/components/app-sidebar.tsx` – Transcript history, “New Transcript” button, theme toggle
-- `src/components/nav-documents.tsx` – Transcript list with open and delete actions
-- `src/components/transcript-panel.tsx` – Record/upload/paste, LLM cleaning, copy buttons
-- `src/components/chatbot-panel.tsx` – Chat using latest transcript context
-- `src/lib/history.ts` – Local storage for transcripts, update events
-- `src/components/ui/*` – Reusable UI primitives
-
----
-
-## Development Workflow
-
-- Branching: feature branches; PRs to main
-- Commit messages: clear, scoped changes
-- Frontend:
-  - Lint: `npm run lint`
-  - Build: `npm run build` (includes TypeScript project build)
-  - Preview: `npm run preview`
-- Backend:
-  - Format: `uv run black .`
-  - Lint: `uv run ruff check .`
-  - Run: `uv run uvicorn app:app --reload --port 8000`
-- Environment:
-  - Configure `backend/.env` from `backend/.env.example`
-- Ports:
-  - Frontend `5173`, Backend `8000` (proxied via Vite)
-
----
-
-## Configuration Notes
-
-- LLM providers: Ollama, LM Studio, OpenAI, or any OpenAI-compatible API
-- Whisper model: set via `WHISPER_MODEL` in `.env`
-- Vite proxy: adjust `vite.config.ts` if backend port changes
+Configure via environment variables in `.env` or docker-compose.
 
 ---
 
 ## Troubleshooting
 
-- Microphone permissions: allow in browser settings
-- Long processing: backend uses extended timeouts for large files
-- LLM connectivity: ensure provider running; see `backend/.env`
+### Microphone not working
+- Allow microphone access in browser settings
+- Use HTTPS in production (required for `getUserMedia`)
+
+### Transcription slow
+- Use a smaller Whisper model (`tiny.en` or `base.en`)
+- Ensure GPU acceleration is available
+
+### LLM not responding
+- Check that Ollama is running: `curl http://localhost:11434/api/tags`
+- Pull a model: `ollama pull llama2`
+- Check logs: `docker compose logs ollama`
+
+### Docker build fails
+- Ensure Docker has enough memory (at least 4GB)
+- Try rebuilding: `docker compose build --no-cache`

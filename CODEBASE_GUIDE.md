@@ -24,9 +24,12 @@ local-ai-transcript-app/
 │       ├── index.css
 │       ├── main.tsx
 │       ├── lib/
+│       │   ├── api-client.ts
 │       │   ├── history.ts
 │       │   └── utils.ts
 │       ├── hooks/
+│       │   ├── use-audio-recorder.ts
+│       │   ├── use-keyboard-shortcuts.ts
 │       │   └── use-mobile.ts
 │       └── components/
 │           ├── site-header.tsx
@@ -34,6 +37,13 @@ local-ai-transcript-app/
 │           ├── nav-documents.tsx
 │           ├── transcript-panel.tsx
 │           ├── chatbot-panel.tsx
+│           ├── error-boundary.tsx
+│           ├── keyboard-shortcuts-dialog.tsx
+│           ├── transcript/
+│           │   ├── voice-recorder.tsx
+│           │   ├── input-methods.tsx
+│           │   ├── transcript-results.tsx
+│           │   └── export-dialog.tsx
 │           └── ui/
 │               ├── button.tsx
 │               ├── card.tsx
@@ -78,8 +88,9 @@ local-ai-transcript-app/
   - `src/components/ui/*` – UI primitives used across the app
 
 - Backend
-  - `backend/app.py` – FastAPI routes: `/api/status`, `/api/system-prompt`, `/api/transcribe`, `/api/clean`, `/api/chat`
+  - `backend/app.py` – FastAPI routes: `/api/status`, `/api/transcribe`, `/api/clean`, `/api/generate-title`, `/api/chat`
   - `backend/transcription.py` – `TranscriptionService` (Whisper + OpenAI-compatible LLM client)
+  - `backend/database.py` – SQLAlchemy models and CRUD operations
   - `backend/system_prompt.txt` – Default prompt used by cleaning
   - `backend/pyproject.toml` – Dependencies and tooling configuration
   - `backend/.env.example` – Provider and model configuration template
