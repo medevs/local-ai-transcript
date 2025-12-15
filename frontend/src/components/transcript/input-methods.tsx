@@ -55,7 +55,10 @@ export function InputMethods({
                   e.preventDefault();
                   setIsDragging(false);
                   const f = e.dataTransfer.files?.[0];
-                  if (f && !isProcessing && !isRecording) onFileSelect(f);
+                  if (f && !isProcessing && !isRecording) {
+                    setSelectedName(`Selected: ${f.name}`);
+                    onFileSelect(f);
+                  }
                 }}
               >
                 <div className="flex flex-col items-center gap-2">
@@ -84,8 +87,8 @@ export function InputMethods({
                   className="hidden"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
-                    if (f) {
-                      setSelectedName(`${f.name}`);
+                    if (f && !isProcessing && !isRecording) {
+                      setSelectedName(`Selected: ${f.name}`);
                       onFileSelect(f);
                     }
                     e.currentTarget.value = "";

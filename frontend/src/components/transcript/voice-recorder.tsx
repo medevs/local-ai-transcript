@@ -147,6 +147,8 @@ export function VoiceRecorder({
         >
           <motion.button
             onClick={onToggle}
+            aria-label={isRecording ? "Stop recording" : isProcessing ? "Processing audio" : "Start recording"}
+            aria-pressed={isRecording}
             className={cn(
               "relative w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300",
               "bg-gradient-to-br from-primary/20 to-primary/10 border-2",
@@ -234,7 +236,7 @@ export function VoiceRecorder({
         </motion.div>
 
         {/* Waveform visualizer */}
-        <div className="flex items-center justify-center space-x-1 h-12">
+        <div className="flex items-center justify-center space-x-1 h-12" role="img" aria-label={isRecording ? `Audio level: ${Math.round(volume)}%` : "Audio waveform display"}>
           {waveformData.map((height, index) => (
             <motion.div
               key={index}

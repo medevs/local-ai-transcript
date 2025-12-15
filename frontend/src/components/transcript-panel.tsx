@@ -2,19 +2,17 @@
 
 import * as React from "react";
 import { addTranscript, getTranscriptById } from "@/lib/history";
+import {
+  transcribeAudio,
+  cleanText,
+  fetchSystemPrompt,
+  generateTitle,
+  ApiError,
+} from "@/lib/api-client";
 import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 import { VoiceRecorder } from "@/components/transcript/voice-recorder";
 import { InputMethods } from "@/components/transcript/input-methods";
 import { TranscriptResults } from "@/components/transcript/transcript-results";
- 
-
-type TranscriptionResponse = {
-  success: boolean;
-  text?: string;
-  error?: string;
-};
-type CleanResponse = { success: boolean; text?: string };
-type SystemPromptResponse = { default_prompt: string };
 
 declare global {
   interface Window {
@@ -38,8 +36,16 @@ export function TranscriptPanel() {
   const [systemPrompt, setSystemPrompt] = React.useState("");
   const [isCleaningWithLLM, setIsCleaningWithLLM] = React.useState(false);
   const [displayedCleanedText, setDisplayedCleanedText] = React.useState<string | null>(null);
+  const [currentTranscriptId, setCurrentTranscriptId] = React.useState<string | null>(null);
+  const [currentTranscriptTitle, setCurrentTranscriptTitle] = React.useState<string>("Transcript");
 
   const isKeyDownRef = React.useRef(false);
+  const currentTranscriptIdRef = React.useRef<string | null>(null);
+
+  // Keep ref in sync with state
+  React.useEffect(() => {
+    currentTranscriptIdRef.current = currentTranscriptId;
+  }, [currentTranscriptId]);
 
   // --- Hooks ---
   const {
@@ -47,6 +53,7 @@ export function TranscriptPanel() {
     isStarting,
     startRecording,
     stopRecording,
+    resetTimer,
     recordingTime,
     error: recorderError,
     volume,
@@ -93,7 +100,9 @@ export function TranscriptPanel() {
         const p = d?.systemPrompt ?? localStorage.getItem("settings.systemPrompt");
         if (v !== null) setUseLLM(v === true || v === "true");
         if (typeof p === "string") setSystemPrompt(p);
-      } catch { void 0 }
+      } catch (err) {
+        console.error("Failed to apply settings:", err);
+      }
     };
     const handler = (e: Event) => {
       const ce = e as CustomEvent;
@@ -104,11 +113,12 @@ export function TranscriptPanel() {
     (async () => {
       if (!localStorage.getItem("settings.systemPrompt")) {
         try {
-          const res = await fetch("/api/system-prompt");
-          const data = (await res.json()) as SystemPromptResponse;
-          setSystemPrompt(data.default_prompt);
-          localStorage.setItem("settings.systemPrompt", data.default_prompt);
-        } catch { void 0 }
+          const defaultPrompt = await fetchSystemPrompt();
+          setSystemPrompt(defaultPrompt);
+          localStorage.setItem("settings.systemPrompt", defaultPrompt);
+        } catch (err) {
+          console.error("Failed to fetch default system prompt:", err);
+        }
       }
     })();
     return () => window.removeEventListener("settings:updated", handler as EventListener);
@@ -118,61 +128,43 @@ export function TranscriptPanel() {
     async (audioBlob: Blob) => {
       setIsProcessing(true);
       setError(null);
-      const formData = new FormData();
-      formData.append("audio", audioBlob, "recording.webm");
-      
+
       try {
-        const transcribeResponse = await fetch("/api/transcribe", {
-          method: "POST",
-          body: formData,
-        });
-        
-        if (!transcribeResponse.ok)
-          throw new Error(`Transcription failed: ${transcribeResponse.statusText}`);
-          
-        const transcribeData = (await transcribeResponse.json()) as TranscriptionResponse;
-        
-        if (!transcribeData.success)
-          throw new Error(transcribeData.error || "Transcription failed");
-          
-        setRawText(transcribeData.text || "");
+        // Transcribe audio using API client
+        const rawResult = await transcribeAudio(audioBlob, "recording.webm");
+        setRawText(rawResult);
         setIsProcessing(false);
 
         let cleaned: string | undefined;
-        if (useLLM && transcribeData.text) {
+        if (useLLM && rawResult) {
           setIsCleaningWithLLM(true);
-          const cleanResponse = await fetch("/api/clean", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              text: transcribeData.text,
-              ...(systemPrompt && { system_prompt: systemPrompt }),
-            }),
-          });
-          
-          if (!cleanResponse.ok)
-            throw new Error(`Cleaning failed: ${cleanResponse.statusText}`);
-            
-          const cleanData = (await cleanResponse.json()) as CleanResponse;
-          if (cleanData.success && cleanData.text) {
-            cleaned = cleanData.text;
-            setCleanedText(cleanData.text);
-          }
-          
+          cleaned = await cleanText(rawResult, systemPrompt || undefined);
+          setCleanedText(cleaned);
           setIsCleaningWithLLM(false);
         }
-        
-        // Save to history
-        const titleSource = (cleaned ?? transcribeData.text) || "";
-        const title = titleSource.trim().split(/\s+/).slice(0, 8).join(" ");
-        addTranscript({
-          title: title || "Transcript",
-          rawText: transcribeData.text || "",
+
+        // Generate AI title and save to history
+        const titleSource = cleaned ?? rawResult;
+        let title: string;
+        try {
+          title = await generateTitle(titleSource);
+        } catch {
+          // Fallback to first 3 words if AI fails
+          title = titleSource.trim().split(/\s+/).slice(0, 3).join(" ") || "Transcript";
+        }
+        const newTranscript = await addTranscript({
+          title,
+          rawText: rawResult,
           cleanedText: cleaned,
         });
-        
+        setCurrentTranscriptId(newTranscript.id);
+        setCurrentTranscriptTitle(title);
+        // Update URL to point to new transcript (without triggering hashchange reset)
+        window.history.replaceState(null, "", `#t-${newTranscript.id}`);
+
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
+        const msg = err instanceof ApiError ? err.message :
+          err instanceof Error ? err.message : "Unknown error";
         setError("Processing failed: " + msg);
         setIsProcessing(false);
         setIsCleaningWithLLM(false);
@@ -191,15 +183,19 @@ export function TranscriptPanel() {
     } else {
       // START
       if (isProcessing || isCleaningWithLLM) return;
-      
+
+      // Reset all state for new recording
       setRawText(null);
       setCleanedText(null);
       setDisplayedCleanedText(null);
       setError(null);
-      
+      setCurrentTranscriptId(null);
+      setCurrentTranscriptTitle("Transcript");
+      resetTimer(); // Reset timer before starting new recording
+
       await startRecording();
     }
-  }, [isRecording, stopRecording, uploadAudio, isProcessing, isCleaningWithLLM, startRecording]);
+  }, [isRecording, stopRecording, uploadAudio, isProcessing, isCleaningWithLLM, startRecording, resetTimer]);
 
   const processAudioFile = (file: File) => {
     if (!file) return;
@@ -227,41 +223,37 @@ export function TranscriptPanel() {
         setCleanedText(null);
         setDisplayedCleanedText(null);
         setIsProcessing(false);
-        
+
         let cleaned: string | undefined;
         if (useLLM) {
           setIsCleaningWithLLM(true);
-          const cleanResponse = await fetch("/api/clean", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              text,
-              ...(systemPrompt && { system_prompt: systemPrompt }),
-            }),
-          });
-          
-          if (!cleanResponse.ok)
-            throw new Error(`Cleaning failed: ${cleanResponse.statusText}`);
-            
-          const cleanData = (await cleanResponse.json()) as CleanResponse;
-          if (cleanData.success && cleanData.text) {
-            cleaned = cleanData.text;
-            setCleanedText(cleanData.text);
-          }
+          cleaned = await cleanText(text, systemPrompt || undefined);
+          setCleanedText(cleaned);
           setIsCleaningWithLLM(false);
         }
-        
-        // Save to history
-        const titleSource = (cleaned ?? text) || "";
-        const title = titleSource.trim().split(/\s+/).slice(0, 8).join(" ");
-        addTranscript({
-          title: title || "Transcript",
+
+        // Generate AI title and save to history
+        const titleSource = cleaned ?? text;
+        let title: string;
+        try {
+          title = await generateTitle(titleSource);
+        } catch {
+          // Fallback to first 3 words if AI fails
+          title = titleSource.trim().split(/\s+/).slice(0, 3).join(" ") || "Transcript";
+        }
+        const newTranscript = await addTranscript({
+          title,
           rawText: text,
           cleanedText: cleaned,
         });
-        
+        setCurrentTranscriptId(newTranscript.id);
+        setCurrentTranscriptTitle(title);
+        // Update URL to point to new transcript (without triggering hashchange reset)
+        window.history.replaceState(null, "", `#t-${newTranscript.id}`);
+
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
+        const msg = err instanceof ApiError ? err.message :
+          err instanceof Error ? err.message : "Unknown error";
         setError("Processing failed: " + msg);
         setIsProcessing(false);
         setIsCleaningWithLLM(false);
@@ -301,55 +293,97 @@ export function TranscriptPanel() {
     };
   }, [isRecording, isProcessing, handleToggleListening, stopRecording, uploadAudio]);
 
+  // Helper to clear/reset the panel
+  const resetPanel = React.useCallback(() => {
+    setIsProcessing(false);
+    setIsCleaningWithLLM(false);
+    setRawText(null);
+    setCleanedText(null);
+    setError(null);
+    setDisplayedCleanedText(null);
+    setCurrentTranscriptId(null);
+    setCurrentTranscriptTitle("Transcript");
+
+    // Reset inputs
+    const ta = document.getElementById("paste-text") as HTMLTextAreaElement | null;
+    if (ta) ta.value = "";
+  }, []);
+
   // --- Global Events ---
   React.useEffect(() => {
-    const onHash = () => {
-      const m = window.location.hash.match(/^#t-(\d+)/);
+    // Handle hash changes - load transcript when URL has #t-{id}
+    const onHash = async () => {
+      const m = window.location.hash.match(/^#t-(.+)/);
       if (m) {
-        const item = getTranscriptById(m[1]);
+        const item = await getTranscriptById(m[1]);
         if (item) {
+          // Reset all processing state when switching transcripts
+          setIsProcessing(false);
+          setIsCleaningWithLLM(false);
+          setDisplayedCleanedText(null);
+          setError(null);
+          resetTimer();
+
+          // Load the transcript data
           setRawText(item.rawText);
           setCleanedText(item.cleanedText || null);
-          setError(null);
+          setCurrentTranscriptId(item.id);
+          setCurrentTranscriptTitle(item.title);
+        } else {
+          // Transcript not found (was deleted), reset panel and clear URL
+          window.location.hash = "";
+          resetPanel();
+        }
+      }
+      // NOTE: Don't reset when hash is empty - user might be creating a new transcript
+    };
+
+    // Explicit "new transcript" request - reset everything
+    const onNew = () => {
+      resetPanel();
+      resetTimer();
+    };
+
+    // Check if currently viewed transcript was deleted
+    const onTranscriptsUpdate = async () => {
+      const currentId = currentTranscriptIdRef.current;
+      if (currentId) {
+        const item = await getTranscriptById(currentId);
+        if (!item) {
+          // Current transcript was deleted
+          window.location.hash = "";
+          resetPanel();
         }
       }
     };
-    
-    const onNew = () => {
-      setIsProcessing(false);
-      setIsCleaningWithLLM(false);
-      setRawText(null);
-      setCleanedText(null);
-      setError(null);
-      setDisplayedCleanedText(null);
-      
-      // Reset inputs
-      const ta = document.getElementById("paste-text") as HTMLTextAreaElement | null;
-      if (ta) ta.value = "";
-      // Reset file input is handled in InputMethods via key or ref reset if needed, 
-      // but since it's a sub-component, we might rely on re-mounting or just manual clear if exposed.
-      // For now, simple state reset is enough.
-    };
-    
+
     window.addEventListener("hashchange", onHash);
     window.addEventListener("transcripts:new", onNew);
-    onHash();
-    
+    window.addEventListener("transcripts:update", onTranscriptsUpdate);
+
+    // Only load from hash on mount if there's a transcript ID in URL
+    if (window.location.hash.match(/^#t-.+/)) {
+      onHash();
+    }
+
     return () => {
       window.removeEventListener("hashchange", onHash);
       window.removeEventListener("transcripts:new", onNew);
+      window.removeEventListener("transcripts:update", onTranscriptsUpdate);
     };
-  }, []);
+  }, [resetPanel, resetTimer]);
 
-  // --- Debug ---
+  // --- Debug (development only) ---
   React.useEffect(() => {
-    window.transcriptDebug = {
-      isRecording,
-      isStarting,
-      isProcessing,
-      startRecording,
-      stopRecording
-    };
+    if (import.meta.env.DEV) {
+      window.transcriptDebug = {
+        isRecording,
+        isStarting,
+        isProcessing,
+        startRecording,
+        stopRecording
+      };
+    }
   }, [isRecording, isStarting, isProcessing, startRecording, stopRecording]);
 
   return (
@@ -389,6 +423,8 @@ export function TranscriptPanel() {
         rawText={rawText}
         cleanedText={cleanedText}
         displayedCleanedText={displayedCleanedText}
+        transcriptId={currentTranscriptId}
+        transcriptTitle={currentTranscriptTitle}
       />
     </div>
   );
