@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { PlusCircleIcon } from "lucide-react";
 
 export function SiteHeader() {
   return (
@@ -11,7 +12,18 @@ export function SiteHeader() {
           orientation="vertical"
           className="mx-2 data-[orientation=vertical]:h-4"
         />
-        <h1 className="text-base font-medium">Local AI Transcript</h1>
+        {/* <h1 className="text-base font-medium">Local AI Transcript</h1> */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            window.location.hash = "";
+            window.dispatchEvent(new CustomEvent("transcripts:new"));
+          }}
+        >
+          <PlusCircleIcon className="!size-5" />
+          <span className="text-base">New Transcript</span>
+        </Button>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="ghost" asChild size="sm" className="hidden sm:flex">
             <a

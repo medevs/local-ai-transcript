@@ -3,6 +3,8 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { TranscriptPanel } from "./components/transcript-panel"
 import { ChatbotPanel } from "./components/chatbot-panel"
 import { SiteHeader } from "@/components/site-header"
+import { ErrorBoundary } from "@/components/error-boundary"
+import { KeyboardShortcutsProvider } from "@/components/keyboard-shortcuts-dialog"
 import {
   SidebarInset,
   SidebarProvider,
@@ -13,6 +15,8 @@ import { ExpandableChat } from "@/components/ui/expandable-chat"
 
 export default function Page() {
   return (
+    <ErrorBoundary>
+    <KeyboardShortcutsProvider>
     <SidebarProvider
       style={
         {
@@ -42,5 +46,7 @@ export default function Page() {
         </ExpandableChat>
       </SidebarInset>
     </SidebarProvider>
+    </KeyboardShortcutsProvider>
+    </ErrorBoundary>
   )
 }

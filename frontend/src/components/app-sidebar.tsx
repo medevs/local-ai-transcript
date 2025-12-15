@@ -10,6 +10,7 @@ import {
 } from "@tabler/icons-react";
 
 import { NavDocuments } from "@/components/nav-documents";
+import { fetchSystemPrompt } from "@/lib/api-client";
 import {
   Sidebar,
   SidebarContent,
@@ -21,7 +22,6 @@ import {
 } from "@/components/ui/sidebar";
 import { getTranscripts, onTranscriptsChange } from "@/lib/history";
 import { Toggle } from "@/components/ui/toggle";
-import { PlusCircleIcon } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -29,14 +29,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const [docs, setDocs] = React.useState(
-    getTranscripts().map((t) => ({
-      id: t.id,
-      name: t.title,
-      url: `#t-${t.id}`,
-      icon: IconFileText,
-    }))
-  );
+  const [docs, setDocs] = React.useState<
+    { id: string; name: string; url: string; icon: typeof IconFileText }[]
+  >([]);
 
   const [theme, setTheme] = React.useState<"light" | "dark">(() => {
     const v =
@@ -55,18 +50,25 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
   }, [theme]);
 
-  React.useEffect(() => {
-    return onTranscriptsChange(() => {
-      setDocs(
-        getTranscripts().map((t) => ({
-          id: t.id,
-          name: t.title,
-          url: `#t-${t.id}`,
-          icon: IconFileText,
-        }))
-      );
-    });
+  // Load transcripts on mount and when they change
+  const loadDocs = React.useCallback(async () => {
+    const transcripts = await getTranscripts();
+    setDocs(
+      transcripts.map((t) => ({
+        id: t.id,
+        name: t.title,
+        url: `#t-${t.id}`,
+        icon: IconFileText,
+      }))
+    );
   }, []);
+
+  React.useEffect(() => {
+    loadDocs();
+    return onTranscriptsChange(() => {
+      loadDocs();
+    });
+  }, [loadDocs]);
 
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [enableAI, setEnableAI] = React.useState<boolean>(() => {
@@ -84,6 +86,23 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       return "";
     }
   });
+
+  // Fetch default system prompt if not set in localStorage
+  React.useEffect(() => {
+    const loadDefaultPrompt = async () => {
+      try {
+        const stored = localStorage.getItem("settings.systemPrompt");
+        if (!stored) {
+          const defaultPrompt = await fetchSystemPrompt();
+          setSystemPrompt(defaultPrompt);
+          localStorage.setItem("settings.systemPrompt", defaultPrompt);
+        }
+      } catch {
+        void 0;
+      }
+    };
+    loadDefaultPrompt();
+  }, []);
 
   React.useEffect(() => {
     try {
@@ -114,19 +133,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   Local AI Transcript
                 </span>
               </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild>
-              <button
-                onClick={() => {
-                  window.location.hash = "";
-                  window.dispatchEvent(new CustomEvent("transcripts:new"));
-                }}
-              >
-                <PlusCircleIcon className="!size-5" />
-                <span className="text-base">New Transcript</span>
-              </button>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
