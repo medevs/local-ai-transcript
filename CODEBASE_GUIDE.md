@@ -263,6 +263,7 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs on push/PR to main
 - faster-whisper 1.2.0 (speech-to-text)
 - OpenAI SDK 1.0.0 (LLM client)
 - ReportLab 4.0 (PDF generation)
+- slowapi 0.1.9 (rate limiting)
 - uvicorn (ASGI server)
 
 ### Infrastructure

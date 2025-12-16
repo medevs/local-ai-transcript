@@ -90,15 +90,6 @@ class TranscriptionService:
         self.llm_client = self.primary_provider.client
         self.llm_model = llm_model
 
-    def _get_available_provider(self) -> Optional[LLMProvider]:
-        """Get the first available LLM provider."""
-        if self.primary_provider.available:
-            return self.primary_provider
-        if self.fallback_provider and self.fallback_provider.available:
-            logger.info("Using fallback LLM provider")
-            return self.fallback_provider
-        return None
-
     def transcribe(self, audio_file: str) -> str:
         """Transcribe audio file to text using Whisper."""
         logger.info("Transcribing audio...")

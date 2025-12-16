@@ -171,6 +171,19 @@ npm run dev
 | POST | `/api/chat` | Chat (non-streaming) |
 | POST | `/api/chat/stream` | Chat (SSE streaming) |
 
+### Rate Limits
+
+The following endpoints have rate limiting to prevent abuse:
+
+| Endpoint | Limit | Reason |
+|----------|-------|--------|
+| `/api/transcribe` | 5/minute | CPU-intensive Whisper processing |
+| `/api/clean` | 20/minute | LLM API call |
+| `/api/generate-title` | 30/minute | LLM API call (fast) |
+| `/api/chat` | 20/minute | LLM API call |
+| `/api/chat/stream` | 20/minute | LLM streaming |
+| `/api/transcripts/{id}/export` | 30/minute | PDF generation |
+
 ## Keyboard Shortcuts
 
 | Key | Action |

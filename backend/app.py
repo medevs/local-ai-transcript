@@ -5,10 +5,13 @@ from contextlib import asynccontextmanager
 from typing import Annotated, AsyncGenerator, Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
@@ -26,6 +29,9 @@ from database import (
 from transcription import TranscriptionService
 
 load_dotenv()
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 # Configure logging
 logging.basicConfig(
@@ -100,6 +106,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AI Transcript App", lifespan=lifespan)
+
+# Register rate limiter with app
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS for localhost development
 app.add_middleware(
@@ -263,7 +273,8 @@ ALLOWED_AUDIO_TYPES = {
 
 
 @app.post("/api/transcribe")
-async def transcribe_audio(audio: Annotated[UploadFile, File()]):
+@limiter.limit("5/minute")
+async def transcribe_audio(request: Request, audio: Annotated[UploadFile, File()]):
     if not service:
         api_error("SERVICE_NOT_READY", "Service not ready, still initializing", 503)
 
@@ -308,16 +319,17 @@ async def transcribe_audio(audio: Annotated[UploadFile, File()]):
 
 
 @app.post("/api/clean")
-async def clean_text(request: CleanRequest):
+@limiter.limit("20/minute")
+async def clean_text(request: Request, data: CleanRequest):
     if not service:
         api_error("SERVICE_NOT_READY", "Service not ready", 503)
 
-    if not request.text:
+    if not data.text:
         return {"success": True, "text": ""}
 
     try:
         cleaned_text = service.clean_with_llm(
-            request.text, system_prompt=request.system_prompt
+            data.text, system_prompt=data.system_prompt
         )
         return {"success": True, "text": cleaned_text}
 
@@ -327,35 +339,37 @@ async def clean_text(request: CleanRequest):
 
 
 @app.post("/api/generate-title")
-async def generate_title(request: GenerateTitleRequest):
+@limiter.limit("30/minute")
+async def generate_title(request: Request, data: GenerateTitleRequest):
     """Generate a short 2-3 word title for transcript text using LLM."""
     if not service:
         api_error("SERVICE_NOT_READY", "Service not ready", 503)
 
-    if not request.text:
+    if not data.text:
         return {"success": True, "title": "Untitled"}
 
     try:
-        title = service.generate_title(request.text)
+        title = service.generate_title(data.text)
         return {"success": True, "title": title}
 
     except Exception as e:
         logger.error(f"Title generation error: {e}")
         # Fallback to first few words if LLM fails
-        words = request.text.strip().split()[:3]
+        words = data.text.strip().split()[:3]
         fallback = " ".join(words) if words else "Untitled"
         return {"success": True, "title": fallback}
 
 
 @app.post("/api/chat")
-async def chat(request: ChatRequest, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+async def chat(request: Request, data: ChatRequest, db: Session = Depends(get_db)):
     if not service:
         api_error("SERVICE_NOT_READY", "Service not ready", 503)
 
     try:
         response = service.chat(
-            message=request.message,
-            context=request.context,
+            message=data.message,
+            context=data.context,
             stream=False,
         )
         reply = response.choices[0].message.content
@@ -367,7 +381,8 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/api/chat/stream")
-async def chat_stream(request: ChatRequest):
+@limiter.limit("20/minute")
+async def chat_stream(request: Request, data: ChatRequest):
     """Stream chat responses using Server-Sent Events."""
     if not service:
         api_error("SERVICE_NOT_READY", "Service not ready", 503)
@@ -375,8 +390,8 @@ async def chat_stream(request: ChatRequest):
     async def generate() -> AsyncGenerator[dict, None]:
         try:
             response = service.chat(
-                message=request.message,
-                context=request.context,
+                message=data.message,
+                context=data.context,
                 stream=True,
             )
 
@@ -400,7 +415,9 @@ async def chat_stream(request: ChatRequest):
 
 
 @app.get("/api/transcripts/{transcript_id}/export")
+@limiter.limit("30/minute")
 async def export_transcript(
+    request: Request,
     transcript_id: str,
     format: str = Query(default="md", regex="^(md|txt|pdf)$"),
     db: Session = Depends(get_db),

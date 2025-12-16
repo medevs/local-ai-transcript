@@ -187,7 +187,7 @@ CREATE TABLE settings (
 | **Exposed API key in git** | CRITICAL | `backend/.env` | Rotate immediately, remove from history |
 | **No authentication** | CRITICAL | All endpoints | Implement JWT or API key auth |
 | **MIME type spoofing** | HIGH | `app.py:271-276` | Validate file content with magic bytes |
-| **No rate limiting** | HIGH | All endpoints | Add slowapi throttling |
+| ~~**No rate limiting**~~ | ~~HIGH~~ | ~~All endpoints~~ | **RESOLVED** - slowapi rate limiting added |
 | **Missing security headers** | MEDIUM | `nginx.conf` | Add CSP, X-Frame-Options, etc. |
 | **No HTTPS** | HIGH | Docker config | Add TLS termination |
 
@@ -300,7 +300,7 @@ dev = [
 
 | Item | Impact | Effort | Location |
 |------|--------|--------|----------|
-| Broken fallback provider detection | LLM reliability | Low | `transcription.py:95` |
+| ~~Broken fallback provider detection~~ | ~~LLM reliability~~ | ~~Low~~ | **RESOLVED** - removed unused method |
 | Missing test infrastructure | All changes risky | High | Entire codebase |
 | Large transcript-panel.tsx | Maintainability | Medium | `transcript-panel.tsx` |
 | Synchronous transcription | Server blocking | High | `app.py:265-307` |
@@ -474,9 +474,9 @@ services:
 |----------|--------|--------|--------|
 | 1 | Rotate exposed API key | Security | 1 hour |
 | 2 | Add basic authentication | Security | 1 week |
-| 3 | Implement rate limiting | Security | 2 days |
+| ~~3~~ | ~~Implement rate limiting~~ | ~~Security~~ | **DONE** |
 | 4 | Add backend unit tests | Quality | 1 week |
-| 5 | Fix fallback provider bug | Reliability | 1 hour |
+| ~~5~~ | ~~Fix fallback provider bug~~ | ~~Reliability~~ | **DONE** |
 | 6 | Add frontend component tests | Quality | 1 week |
 
 ### Medium-Term (1-3 months)
