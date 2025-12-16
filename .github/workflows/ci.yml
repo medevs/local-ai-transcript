@@ -70,3 +70,6 @@ jobs:
           uv pip install pyright
           uv run pyright || true
         continue-on-error: true
+
+      - name: Run tests
+        run: uv run pytest --tb=short -v

@@ -15,7 +15,7 @@ The Local AI Transcript App is a full-stack voice transcription solution combini
 | Category | Status | Risk Level |
 |----------|--------|------------|
 | Core Functionality | **Complete** | Low |
-| Test Coverage | **0%** | Critical |
+| Test Coverage | **Backend: 81 tests** | Low |
 | Authentication | **None** | Critical |
 | Security Posture | **Weak** | High |
 | Production Readiness | **~70%** | Medium |
@@ -26,8 +26,8 @@ The Local AI Transcript App is a full-stack voice transcription solution combini
 
 1. **CRITICAL**: Rotate exposed OpenRouter API key in `.env` (committed to git history)
 2. **CRITICAL**: Implement authentication before any network deployment
-3. **HIGH**: Add test coverage (currently 0%)
-4. **HIGH**: Implement rate limiting on expensive endpoints
+3. ~~**HIGH**: Add test coverage (currently 0%)~~ **RESOLVED** - 81 backend tests added
+4. ~~**HIGH**: Implement rate limiting on expensive endpoints~~ **RESOLVED** - slowapi added
 
 ### What the Product Does Well
 
@@ -228,68 +228,68 @@ CREATE TABLE settings (
 
 ## 4. Test Coverage Analysis
 
-### Current State: 0% Coverage
+### Current State: Backend Tests Implemented ✓
 
-**Finding:** Zero test files exist in the entire repository despite pytest and testing dependencies being configured in `pyproject.toml`.
+**Status:** 81 backend tests implemented covering database, transcription service, and API endpoints.
 
-### Missing Test Categories
+### Test Summary
+
+| Category | Tests | Status |
+|----------|-------|--------|
+| **Database CRUD** | 26 tests | ✅ Complete |
+| **TranscriptionService** | 20 tests | ✅ Complete |
+| **API Endpoints** | 35 tests | ✅ Complete |
+| **Frontend Unit Tests** | 0 tests | ⏳ Pending |
+| **E2E Tests** | 0 tests | ⏳ Pending |
+
+### Backend Test Files
+
+```
+backend/tests/
+├── conftest.py           # Fixtures: test DB, mocked services, test client
+├── test_database.py      # 26 tests: CRUD operations, cascade deletes
+├── test_transcription.py # 20 tests: Whisper mock, LLM mock, fallback logic
+├── test_api_transcripts.py # 21 tests: transcript & message endpoints
+└── test_api_ai.py        # 14 tests: clean, chat, export endpoints
+```
+
+### What's Tested
+
+**Database (`test_database.py`):**
+- Transcript CRUD (create, read, update, delete)
+- Chat message operations
+- Settings operations
+- Cascade delete behavior
+- Ordering and pagination
+
+**Transcription Service (`test_transcription.py`):**
+- LLMProvider initialization and chat
+- Whisper transcription (mocked)
+- LLM text cleaning with fallback
+- Title generation with word limits
+- Chat with context and streaming
+
+**API Endpoints (`test_api_*.py`):**
+- All transcript endpoints (list, get, create, update, delete)
+- Message endpoints (list, add, validation)
+- AI endpoints (clean, generate-title, chat)
+- Export endpoints (md, txt, pdf)
+- Error handling and 404 responses
+
+### Remaining Test Categories
 
 | Category | Files Needing Tests | Priority |
 |----------|---------------------|----------|
-| **Backend Unit Tests** | `transcription.py`, `database.py` | Critical |
-| **API Integration Tests** | All 19 endpoints in `app.py` | Critical |
 | **Frontend Unit Tests** | All 30 components, 3 hooks | High |
-| **E2E Tests** | Recording, transcription, chat workflows | High |
-| **API Client Tests** | `api-client.ts` (427 lines) | High |
+| **E2E Tests** | Recording, transcription, chat workflows | Medium |
+| **API Client Tests** | `api-client.ts` (427 lines) | Medium |
 
-### Critical Paths Without Tests
+### CI Integration
 
-1. **Audio Recording Flow**
-   - Microphone permission handling
-   - Audio blob creation and encoding
-   - Recording state management
-   - Error recovery
-
-2. **Transcription Pipeline**
-   - File upload and validation
-   - Whisper model inference
-   - Error handling for malformed audio
-
-3. **LLM Integration**
-   - Primary provider communication
-   - Fallback provider failover
-   - Streaming response parsing
-   - Token limit handling
-
-4. **Data Persistence**
-   - CRUD operations on transcripts
-   - Message history management
-   - Export generation (MD/TXT/PDF)
-
-### Testing Infrastructure Needed
-
-**Frontend:**
-```json
-{
-  "devDependencies": {
-    "vitest": "^1.0.0",
-    "@testing-library/react": "^14.0.0",
-    "@testing-library/user-event": "^14.0.0",
-    "msw": "^2.0.0",
-    "playwright": "^1.40.0"
-  }
-}
-```
-
-**Backend:**
-```toml
-# Already in pyproject.toml, just needs test files
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-    "httpx>=0.27",
-]
+Tests run automatically on every push/PR via GitHub Actions:
+```yaml
+- name: Run tests
+  run: uv run pytest --tb=short -v
 ```
 
 ---
@@ -301,7 +301,7 @@ dev = [
 | Item | Impact | Effort | Location |
 |------|--------|--------|----------|
 | ~~Broken fallback provider detection~~ | ~~LLM reliability~~ | ~~Low~~ | **RESOLVED** - removed unused method |
-| Missing test infrastructure | All changes risky | High | Entire codebase |
+| ~~Missing test infrastructure~~ | ~~All changes risky~~ | ~~High~~ | **RESOLVED** - 81 backend tests added |
 | Large transcript-panel.tsx | Maintainability | Medium | `transcript-panel.tsx` |
 | Synchronous transcription | Server blocking | High | `app.py:265-307` |
 | Manual SSE parsing | Fragile streaming | Low | `api-client.ts:313-376` |

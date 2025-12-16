@@ -75,7 +75,14 @@ local-ai-transcript-app/
 │   ├── uv.lock                    # Dependency lock file
 │   ├── Dockerfile                 # Python 3.12 image
 │   ├── .env.example               # Configuration template
-│   └── transcripts.db             # SQLite database (generated)
+│   ├── pytest.ini                 # Test configuration
+│   ├── transcripts.db             # SQLite database (generated)
+│   └── tests/                     # Backend test suite (81 tests)
+│       ├── conftest.py            # Fixtures: test DB, mocked services
+│       ├── test_database.py       # Database CRUD tests (26)
+│       ├── test_transcription.py  # TranscriptionService tests (20)
+│       ├── test_api_transcripts.py # Transcript API tests (21)
+│       └── test_api_ai.py         # AI endpoint tests (14)
 ├── .devcontainer/
 │   ├── Dockerfile
 │   ├── devcontainer.json
@@ -243,6 +250,7 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs on push/PR to main
 2. Lint (`uv run ruff check .`)
 3. Format check (`uv run black --check .`)
 4. Type check (`uv run pyright`) – optional, warn only
+5. Run tests (`uv run pytest --tb=short -v`) – 81 tests
 
 ## Technology Stack
 
