@@ -24,10 +24,14 @@ The easiest way to run the app is with Docker Compose:
 git clone <repo-url>
 cd local-ai-transcript-app
 
-# Start all services (frontend, backend, Ollama)
+# Copy environment template and configure
+cp backend/.env.example backend/.env
+# Edit backend/.env with your LLM configuration
+
+# Start services (frontend + backend)
 docker compose up -d
 
-# Wait for services to start (Ollama will download the model on first run)
+# Wait for services to start (Whisper model downloads on first run)
 # This can take a few minutes depending on your internet speed
 
 # Open the app
@@ -40,11 +44,12 @@ open http://localhost:3000
 |---------|------|-------------|
 | Frontend | 3000 | React app served via Nginx |
 | Backend | 8000 | FastAPI with Whisper |
-| Ollama | 11434 | Local LLM server |
+
+> **Note:** Ollama is not included by default. To use local LLM, either run Ollama separately (`ollama serve`) or uncomment the Ollama service in `docker-compose.yml`.
 
 ### Configuration
 
-Create a `.env` file in the root directory to customize:
+Create a `.env` file in the `backend/` directory to customize:
 
 ```bash
 # LLM Model (default: llama2)
@@ -151,10 +156,14 @@ npm run dev
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/status` | Service health check |
+| GET | `/api/system-prompt` | Get default LLM cleaning prompt |
 | GET | `/api/transcripts` | List all transcripts |
 | POST | `/api/transcripts` | Create transcript |
 | GET | `/api/transcripts/:id` | Get transcript |
+| PUT | `/api/transcripts/:id` | Update transcript |
 | DELETE | `/api/transcripts/:id` | Delete transcript |
+| GET | `/api/transcripts/:id/messages` | Get chat messages for transcript |
+| POST | `/api/transcripts/:id/messages` | Add chat message to transcript |
 | GET | `/api/transcripts/:id/export?format=md\|txt\|pdf` | Export transcript |
 | POST | `/api/transcribe` | Transcribe audio file |
 | POST | `/api/clean` | Clean text with LLM |

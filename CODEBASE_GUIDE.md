@@ -16,6 +16,8 @@ local-ai-transcript-app/
 │   ├── tsconfig.app.json
 │   ├── tsconfig.node.json
 │   ├── vite.config.ts
+│   ├── Dockerfile                 # Multi-stage build (Node → Nginx)
+│   ├── nginx.conf                 # Production server config
 │   ├── public/
 │   │   └── logo.svg
 │   └── src/
@@ -24,31 +26,35 @@ local-ai-transcript-app/
 │       ├── index.css
 │       ├── main.tsx
 │       ├── lib/
-│       │   ├── api-client.ts
-│       │   ├── history.ts
-│       │   └── utils.ts
+│       │   ├── api-client.ts      # Typed API wrapper with Zod validation
+│       │   ├── history.ts         # Transcript CRUD and events
+│       │   └── utils.ts           # Utility functions (cn, etc.)
 │       ├── hooks/
-│       │   ├── use-audio-recorder.ts
-│       │   ├── use-keyboard-shortcuts.ts
-│       │   └── use-mobile.ts
+│       │   ├── use-audio-recorder.ts      # Web Audio API recording
+│       │   ├── use-keyboard-shortcuts.ts  # Shortcut registration system
+│       │   └── use-mobile.ts              # Mobile detection
 │       └── components/
 │           ├── site-header.tsx
-│           ├── app-sidebar.tsx
-│           ├── nav-documents.tsx
-│           ├── transcript-panel.tsx
-│           ├── chatbot-panel.tsx
-│           ├── error-boundary.tsx
+│           ├── app-sidebar.tsx            # Navigation, settings, theme
+│           ├── nav-documents.tsx          # Transcript list with delete
+│           ├── transcript-panel.tsx       # Main transcription UI
+│           ├── chatbot-panel.tsx          # Chat interface
+│           ├── error-boundary.tsx         # Error catching component
 │           ├── keyboard-shortcuts-dialog.tsx
 │           ├── transcript/
-│           │   ├── voice-recorder.tsx
-│           │   ├── input-methods.tsx
-│           │   ├── transcript-results.tsx
-│           │   └── export-dialog.tsx
+│           │   ├── voice-recorder.tsx     # Recording UI with waveform
+│           │   ├── input-methods.tsx      # Upload/paste tabs
+│           │   ├── transcript-results.tsx # Display results
+│           │   ├── export-dialog.tsx      # Export format selection
+│           │   └── settings-section.tsx   # AI settings panel
 │           └── ui/
+│               ├── avatar.tsx
+│               ├── badge.tsx
 │               ├── button.tsx
 │               ├── card.tsx
 │               ├── checkbox.tsx
 │               ├── dropdown-menu.tsx
+│               ├── expandable-chat.tsx    # Floating chat component
 │               ├── input.tsx
 │               ├── label.tsx
 │               ├── select.tsx
@@ -61,61 +67,214 @@ local-ai-transcript-app/
 │               ├── toggle.tsx
 │               └── tooltip.tsx
 ├── backend/
-│   ├── app.py
-│   ├── transcription.py
-│   ├── system_prompt.txt
-│   ├── pyproject.toml
-│   ├── uv.lock
-│   └── .env.example
+│   ├── app.py                     # FastAPI routes (19 endpoints)
+│   ├── transcription.py           # Whisper + LLM service
+│   ├── database.py                # SQLAlchemy models and CRUD
+│   ├── system_prompt.txt          # Default LLM cleaning prompt
+│   ├── pyproject.toml             # Dependencies and tool config
+│   ├── uv.lock                    # Dependency lock file
+│   ├── Dockerfile                 # Python 3.12 image
+│   ├── .env.example               # Configuration template
+│   └── transcripts.db             # SQLite database (generated)
 ├── .devcontainer/
 │   ├── Dockerfile
 │   ├── devcontainer.json
 │   ├── docker-compose.yml
 │   └── post-create.sh
-├── README.md
-└── CODEBASE_GUIDE.md
+├── .github/
+│   └── workflows/
+│       └── ci.yml                 # GitHub Actions CI pipeline
+├── .claude/
+│   └── settings.local.json        # Claude Code permissions
+├── docker-compose.yml             # Production orchestration
+├── CLAUDE.md                      # Claude Code instructions (doc update rules)
+├── README.md                      # User documentation
+├── CODEBASE_GUIDE.md              # This file
+└── GAP_ANALYSIS_REPORT.md         # Product & engineering gap analysis
 ```
 
 ## Module Organization
 
-- Frontend
-  - `src/App.tsx` – Layout container for header, sidebar, and content grid
-  - `src/components/transcript-panel.tsx` – Recording, upload, paste text, LLM cleaning
-  - `src/components/chatbot-panel.tsx` – Contextual chat over latest transcript
-  - `src/components/app-sidebar.tsx` – Transcript history, new transcript trigger, theme toggle
-  - `src/components/site-header.tsx` – App title and GitHub link
-  - `src/lib/history.ts` – Local storage CRUD and update events
-  - `src/components/ui/*` – UI primitives used across the app
+### Frontend
 
-- Backend
-  - `backend/app.py` – FastAPI routes: `/api/status`, `/api/transcribe`, `/api/clean`, `/api/generate-title`, `/api/chat`
-  - `backend/transcription.py` – `TranscriptionService` (Whisper + OpenAI-compatible LLM client)
-  - `backend/database.py` – SQLAlchemy models and CRUD operations
-  - `backend/system_prompt.txt` – Default prompt used by cleaning
-  - `backend/pyproject.toml` – Dependencies and tooling configuration
-  - `backend/.env.example` – Provider and model configuration template
+| File | Purpose |
+|------|---------|
+| `src/App.tsx` | Root layout with sidebar, header, content grid, and floating chat |
+| `src/main.tsx` | Vite entry point, renders App |
+| `src/components/transcript-panel.tsx` | Recording, upload, paste, LLM cleaning, title generation |
+| `src/components/chatbot-panel.tsx` | Streaming chat with transcript context |
+| `src/components/app-sidebar.tsx` | Navigation, transcript history, theme toggle, settings dialog |
+| `src/components/nav-documents.tsx` | Transcript list with delete confirmation |
+| `src/components/site-header.tsx` | App title and GitHub link |
+| `src/components/error-boundary.tsx` | Error catching and recovery UI |
+| `src/components/keyboard-shortcuts-dialog.tsx` | Keyboard shortcut help modal |
+| `src/lib/api-client.ts` | Typed API wrapper with Zod schema validation |
+| `src/lib/history.ts` | Transcript CRUD via API, event dispatching |
+| `src/lib/utils.ts` | Utility functions (className merge) |
+| `src/hooks/use-audio-recorder.ts` | Web Audio API for recording, waveform, volume |
+| `src/hooks/use-keyboard-shortcuts.ts` | Global keyboard shortcut system |
+| `src/components/ui/*` | Radix UI-based primitives |
+
+### Backend
+
+| File | Purpose |
+|------|---------|
+| `app.py` | FastAPI application with 19 API endpoints |
+| `transcription.py` | `TranscriptionService` class (Whisper STT + LLM client) |
+| `database.py` | SQLAlchemy models (`Transcript`, `ChatMessage`, `Setting`) and CRUD |
+| `system_prompt.txt` | Default prompt for LLM text cleaning |
+| `pyproject.toml` | Python dependencies, Ruff/Black configuration |
+| `.env.example` | Environment variable template |
+
+### API Endpoints (19 total)
+
+**Status & System:**
+- `GET /api/status` – Service health check
+- `GET /api/system-prompt` – Get default cleaning prompt
+
+**Transcripts:**
+- `GET /api/transcripts` – List all transcripts
+- `POST /api/transcripts` – Create transcript
+- `GET /api/transcripts/:id` – Get single transcript
+- `PUT /api/transcripts/:id` – Update transcript
+- `DELETE /api/transcripts/:id` – Delete transcript
+
+**Chat Messages:**
+- `GET /api/transcripts/:id/messages` – Get chat history
+- `POST /api/transcripts/:id/messages` – Add message
+
+**Export:**
+- `GET /api/transcripts/:id/export` – Export (md/txt/pdf)
+
+**AI Processing:**
+- `POST /api/transcribe` – Transcribe audio file
+- `POST /api/clean` – Clean text with LLM
+- `POST /api/generate-title` – Generate AI title
+- `POST /api/chat` – Non-streaming chat
+- `POST /api/chat/stream` – Streaming chat (SSE)
+
+## Database Schema
+
+```sql
+-- Transcripts table
+CREATE TABLE transcripts (
+    id VARCHAR PRIMARY KEY,         -- UUID
+    title VARCHAR NOT NULL,
+    raw_text TEXT,
+    cleaned_text TEXT,
+    created_at DATETIME,
+    updated_at DATETIME
+);
+
+-- Chat messages table
+CREATE TABLE chat_messages (
+    id INTEGER PRIMARY KEY,
+    transcript_id VARCHAR REFERENCES transcripts(id) ON DELETE CASCADE,
+    role VARCHAR NOT NULL,          -- 'user' or 'assistant'
+    content TEXT NOT NULL,
+    created_at DATETIME
+);
+
+-- Settings table (key-value store)
+CREATE TABLE settings (
+    key VARCHAR PRIMARY KEY,
+    value TEXT
+);
+```
 
 ## Key Configuration Files
 
-- `frontend/vite.config.ts` – Vite plugins, alias `@` → `src`, dev proxy for `/api` → `http://localhost:8000`
-- `backend/pyproject.toml` – Python dependencies and Black/Ruff tool config
-- `backend/.env.example` – Example variables for LLM and Whisper
-- `frontend/package.json` – Scripts: `dev`, `build`, `lint`, `preview`
-- `.devcontainer/*` – Containerized development setup for app + Ollama
+| File | Purpose |
+|------|---------|
+| `frontend/vite.config.ts` | Vite plugins, path alias `@` → `src`, dev proxy `/api` → `:8000` |
+| `frontend/nginx.conf` | Production: API proxy, SPA routing, gzip, caching |
+| `frontend/Dockerfile` | Multi-stage build: Node builder → Nginx production |
+| `backend/pyproject.toml` | Python dependencies, Ruff lint rules, Black config |
+| `backend/Dockerfile` | Python 3.12 + FFmpeg + uv package manager |
+| `backend/.env.example` | LLM and Whisper configuration template |
+| `docker-compose.yml` | Production orchestration (frontend + backend) |
+| `.github/workflows/ci.yml` | CI pipeline: lint, format, type-check, build |
 
 ## Build and Deployment
 
-- Development
-  - Backend: `uv sync && uv run uvicorn app:app --reload --port 8000`
-  - Frontend: `pnpm install && pnpm run dev` (or `npm install && npm run dev`)
-  - Access: `http://localhost:5173` (frontend dev server, proxied to backend `8000`)
+### Development
 
-- Production (reference)
-  - Frontend: `npm run build` → outputs `frontend/dist/`
-  - Serve static assets via any web server; backend with `uvicorn app:app` behind a reverse proxy
-  - Configure environment via `backend/.env` (copy from `.env.example`)
+**Backend:**
+```bash
+cd backend
+cp .env.example .env          # Configure LLM settings
+uv sync                       # Install dependencies
+uv run uvicorn app:app --reload --port 8000
+```
+
+**Frontend:**
+```bash
+cd frontend
+pnpm install                  # or npm install
+pnpm run dev                  # or npm run dev
+# Open http://localhost:5173
+```
+
+### Production (Docker)
+
+```bash
+# Configure environment
+cp backend/.env.example backend/.env
+# Edit backend/.env with your LLM provider settings
+
+# Build and start
+docker compose up -d --build
+
+# Access at http://localhost:3000
+```
+
+### CI/CD Pipeline
+
+The GitHub Actions workflow (`.github/workflows/ci.yml`) runs on push/PR to main:
+
+**Frontend:**
+1. Install dependencies (`npm ci`)
+2. Lint (`npm run lint`)
+3. Type check (`npx tsc --noEmit`)
+4. Build (`npm run build`)
+
+**Backend:**
+1. Install dependencies (`uv sync --dev`)
+2. Lint (`uv run ruff check .`)
+3. Format check (`uv run black --check .`)
+4. Type check (`uv run pyright`) – optional, warn only
+
+## Technology Stack
+
+### Frontend
+- React 19.2.0
+- TypeScript 5.9.3
+- Vite 7.2.4
+- Tailwind CSS 4.1.18
+- Radix UI (headless components)
+- Framer Motion (animations)
+- Zod (schema validation)
+- pnpm (package manager)
+
+### Backend
+- Python 3.12
+- FastAPI 0.115.0
+- SQLAlchemy 2.0 (ORM)
+- faster-whisper 1.2.0 (speech-to-text)
+- OpenAI SDK 1.0.0 (LLM client)
+- ReportLab 4.0 (PDF generation)
+- uvicorn (ASGI server)
+
+### Infrastructure
+- Docker + Docker Compose
+- Nginx (reverse proxy, static serving)
+- SQLite (database)
+- GitHub Actions (CI)
 
 ## Notes
 
-- The app is OpenAI API-compatible (Ollama, LM Studio, OpenAI, etc.)
-- Adjust proxy settings in `vite.config.ts` if backend port or origin changes
+- The app is **OpenAI API-compatible** – works with Ollama, LM Studio, OpenAI, Groq, Together AI
+- Adjust proxy settings in `vite.config.ts` if backend port changes
+- Default Whisper model is `base.en` – change via `WHISPER_MODEL` env var
+- Transcript history persists in SQLite at `backend/transcripts.db`
+- Docker volumes persist database and Whisper model cache between restarts
