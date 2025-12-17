@@ -5,6 +5,7 @@ import {
   IconFileText,
   IconMicrophone,
   IconMoon,
+  IconSearch,
   IconSun,
   IconSettings,
 } from "@tabler/icons-react";
@@ -20,8 +21,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { getTranscripts, onTranscriptsChange } from "@/lib/history";
+import { getTranscripts, searchTranscripts, onTranscriptsChange } from "@/lib/history";
 import { Toggle } from "@/components/ui/toggle";
+import { Input } from "@/components/ui/input";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -32,6 +34,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [docs, setDocs] = React.useState<
     { id: string; name: string; url: string; icon: typeof IconFileText }[]
   >([]);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [isSearching, setIsSearching] = React.useState(false);
 
   const [theme, setTheme] = React.useState<"light" | "dark">(() => {
     const v =
@@ -51,24 +55,39 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   }, [theme]);
 
   // Load transcripts on mount and when they change
-  const loadDocs = React.useCallback(async () => {
-    const transcripts = await getTranscripts();
-    setDocs(
-      transcripts.map((t) => ({
-        id: t.id,
-        name: t.title,
-        url: `#t-${t.id}`,
-        icon: IconFileText,
-      }))
-    );
+  const loadDocs = React.useCallback(async (query?: string) => {
+    setIsSearching(true);
+    try {
+      const transcripts = query
+        ? await searchTranscripts(query)
+        : await getTranscripts();
+      setDocs(
+        transcripts.map((t) => ({
+          id: t.id,
+          name: t.title,
+          url: `#t-${t.id}`,
+          icon: IconFileText,
+        }))
+      );
+    } finally {
+      setIsSearching(false);
+    }
   }, []);
 
   React.useEffect(() => {
     loadDocs();
     return onTranscriptsChange(() => {
-      loadDocs();
+      loadDocs(searchQuery);
     });
-  }, [loadDocs]);
+  }, [loadDocs, searchQuery]);
+
+  // Debounced search effect
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      loadDocs(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, loadDocs]);
 
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [enableAI, setEnableAI] = React.useState<boolean>(() => {
@@ -136,6 +155,21 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <div className="px-2 pt-2">
+          <div className="relative">
+            <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search transcripts..."
+              className="pl-8 h-8"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          {isSearching && (
+            <div className="mt-1 text-xs text-muted-foreground">Searching...</div>
+          )}
+        </div>
       </SidebarHeader>
       <SidebarContent>
         <NavDocuments items={docs} />

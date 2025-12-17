@@ -46,6 +46,11 @@ export const TranscriptsResponseSchema = z.object({
   transcripts: z.array(TranscriptSchema),
 });
 
+export const SearchResponseSchema = z.object({
+  transcripts: z.array(TranscriptSchema),
+  query: z.string(),
+});
+
 export const ChatMessageSchema = z.object({
   id: z.number(),
   transcriptId: z.string(),
@@ -154,6 +159,13 @@ async function handleResponse<T>(
 export async function fetchTranscripts(limit = 100): Promise<Transcript[]> {
   const response = await fetch(`${API_BASE}/transcripts?limit=${limit}`);
   const data = await handleResponse(response, TranscriptsResponseSchema);
+  return data.transcripts;
+}
+
+export async function searchTranscripts(query: string, limit = 50): Promise<Transcript[]> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  const response = await fetch(`${API_BASE}/transcripts/search?${params}`);
+  const data = await handleResponse(response, SearchResponseSchema);
   return data.transcripts;
 }
 

@@ -3,6 +3,7 @@ import {
   deleteTranscript as apiDeleteTranscript,
   fetchTranscript,
   fetchTranscripts,
+  searchTranscripts as apiSearchTranscripts,
   type Transcript,
 } from "./api-client";
 
@@ -23,6 +24,15 @@ export async function getTranscripts(): Promise<TranscriptItem[]> {
     return await fetchTranscripts(100);
   } catch (error) {
     console.error("Failed to fetch transcripts:", error);
+    return [];
+  }
+}
+
+export async function searchTranscripts(query: string): Promise<TranscriptItem[]> {
+  try {
+    return await apiSearchTranscripts(query);
+  } catch (error) {
+    console.error("Failed to search transcripts:", error);
     return [];
   }
 }
