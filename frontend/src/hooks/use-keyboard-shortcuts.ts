@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useEffect } from "react";
 
 type ShortcutHandler = (event: KeyboardEvent) => void;
 
@@ -92,16 +92,14 @@ export function useShortcut(
     allowInInput?: boolean;
   }
 ) {
-  const memoizedHandler = useCallback(handler, [handler]);
-
   useEffect(() => {
     return registerShortcut({
       key,
-      handler: memoizedHandler,
+      handler,
       description,
       ...options,
     });
-  }, [key, memoizedHandler, description, options]);
+  }, [key, handler, description, options]);
 }
 
 // Format shortcut for display (e.g., "Ctrl+N" or "⌘N")
