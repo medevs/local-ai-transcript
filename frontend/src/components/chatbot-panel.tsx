@@ -4,7 +4,7 @@ import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { getTranscripts, type TranscriptItem } from "@/lib/history"
-import { streamChatMessage, sendChatMessage, ApiError } from "@/lib/api-client"
+import { streamChatMessage, sendChatMessage, ApiError, type ChatOptions } from "@/lib/api-client"
 
 type ChatMsg = { role: "user" | "assistant"; content: string }
 
@@ -31,10 +31,17 @@ export function ChatbotPanel() {
     return () => window.removeEventListener("transcripts:update", handler)
   }, [])
 
-  const context = React.useMemo(() => {
-    return latestTranscript
-      ? (latestTranscript.cleanedText || latestTranscript.rawText || "")
-      : ""
+  // Build chat options for RAG
+  const chatOptions = React.useMemo((): ChatOptions => {
+    if (!latestTranscript) {
+      return {}
+    }
+    return {
+      transcriptId: latestTranscript.id,
+      // Fallback context in case RAG is not available
+      context: latestTranscript.cleanedText || latestTranscript.rawText || "",
+      includeHistory: true,
+    }
   }, [latestTranscript])
 
   // Auto-scroll to bottom
@@ -73,7 +80,7 @@ export function ChatbotPanel() {
         async (error) => {
           console.warn("Streaming failed, falling back to non-streaming:", error)
           try {
-            const reply = await sendChatMessage(text, context)
+            const reply = await sendChatMessage(text, chatOptions)
             setMessages((m) => [...m, { role: "assistant", content: reply }])
           } catch (err) {
             const msg = err instanceof ApiError ? err.message :
@@ -85,7 +92,7 @@ export function ChatbotPanel() {
             abortRef.current = null
           }
         },
-        context // optional context moved to end
+        chatOptions // Pass options with transcriptId for RAG
       )
     } catch (err) {
       const msg = err instanceof ApiError ? err.message :

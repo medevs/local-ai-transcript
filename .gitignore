@@ -25,3 +25,10 @@ Thumbs.db
 # Build artifacts
 dist/
 *.log
+logs.txt
+
+# Database
+backend/transcripts.db
+
+# Local config
+.claude/settings.local.json
