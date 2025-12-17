@@ -6,7 +6,16 @@ from contextlib import asynccontextmanager
 from typing import Annotated, NoReturn
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -17,17 +26,25 @@ from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
 from database import (
+    SessionLocal,
     add_message,
     create_transcript,
     delete_transcript,
+    engine,
     get_all_transcripts,
+    get_chunks_for_transcript,
     get_db,
     get_messages_for_transcript,
     get_transcript_by_id,
     init_db,
+    init_vector_store,
+    is_vector_store_available,
+    save_chunks_with_embeddings,
+    search_similar_chunks,
     search_transcripts,
     update_transcript,
 )
+from embeddings import EmbeddingService
 from transcription import TranscriptionService
 
 load_dotenv()
@@ -51,7 +68,10 @@ class CleanRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    context: str | None = None
+    transcript_id: str | None = None
+    context: str | None = None  # Fallback context if RAG unavailable
+    include_history: bool = True
+    history_limit: int = 10
 
 
 class TranscriptCreate(BaseModel):
@@ -80,19 +100,32 @@ class ErrorResponse(BaseModel):
     error: dict
 
 
-service = None
+service: TranscriptionService | None = None
+embedding_service: EmbeddingService | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize services on startup."""
-    global service
+    global service, embedding_service
     logger.info("Starting AI Transcript App...")
 
     # Initialize database
     init_db()
     logger.info("Database initialized")
 
+    # Initialize vector store (sqlite-vec)
+    try:
+        with engine.connect() as conn:
+            raw_conn = conn.connection.dbapi_connection
+            if init_vector_store(raw_conn):
+                logger.info("Vector store initialized")
+            else:
+                logger.warning("Vector store not available - RAG disabled")
+    except Exception as e:
+        logger.warning(f"Could not initialize vector store: {e}")
+
+    # Initialize transcription service
     service = TranscriptionService(
         whisper_model=os.getenv("WHISPER_MODEL", "base.en"),
         llm_base_url=os.getenv("LLM_BASE_URL", "http://localhost:11434/v1"),
@@ -103,6 +136,22 @@ async def lifespan(app: FastAPI):
         fallback_api_key=os.getenv("LLM_FALLBACK_API_KEY"),
         fallback_model=os.getenv("LLM_FALLBACK_MODEL"),
     )
+
+    # Initialize embedding service
+    embedding_base_url = os.getenv(
+        "EMBEDDING_BASE_URL",
+        os.getenv("LLM_BASE_URL", "http://localhost:11434/v1").replace("/v1", ""),
+    )
+    embedding_model = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+
+    embedding_service = EmbeddingService(
+        base_url=embedding_base_url,
+        model=embedding_model,
+    )
+    logger.info(
+        f"Embedding service configured: {embedding_model} at {embedding_base_url}"
+    )
+
     logger.info("Services ready!")
     yield
 
@@ -196,22 +245,35 @@ async def get_transcript(transcript_id: str, db: Session = Depends(get_db)):
 
 
 @app.post("/api/transcripts", status_code=201)
-async def create_new_transcript(data: TranscriptCreate, db: Session = Depends(get_db)):
-    """Create a new transcript."""
+async def create_new_transcript(
+    data: TranscriptCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Create a new transcript and queue it for RAG indexing."""
     transcript = create_transcript(
         db,
         title=data.title,
         raw_text=data.rawText,
         cleaned_text=data.cleanedText,
     )
+
+    # Queue background indexing for RAG
+    text = data.cleanedText or data.rawText
+    if text and embedding_service:
+        background_tasks.add_task(_index_transcript, transcript.id, text)
+
     return transcript.to_dict()
 
 
 @app.put("/api/transcripts/{transcript_id}")
 async def update_existing_transcript(
-    transcript_id: str, data: TranscriptUpdate, db: Session = Depends(get_db)
+    transcript_id: str,
+    data: TranscriptUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
 ):
-    """Update an existing transcript."""
+    """Update an existing transcript and reindex if text changed."""
     transcript = update_transcript(
         db,
         transcript_id,
@@ -221,6 +283,13 @@ async def update_existing_transcript(
     )
     if not transcript:
         api_error("TRANSCRIPT_NOT_FOUND", f"Transcript {transcript_id} not found", 404)
+
+    # Reindex if text was updated
+    if (data.rawText or data.cleanedText) and embedding_service:
+        text = transcript.cleaned_text or transcript.raw_text
+        if text:
+            background_tasks.add_task(_index_transcript, transcript_id, text)
+
     return transcript.to_dict()
 
 
@@ -373,20 +442,84 @@ async def generate_title(request: Request, data: GenerateTitleRequest):
         return {"success": True, "title": fallback}
 
 
+async def _get_rag_context(
+    db: Session,
+    transcript_id: str,
+    message: str,
+    include_history: bool,
+    history_limit: int,
+) -> tuple[list[str] | None, list[dict] | None]:
+    """
+    Get RAG context (relevant chunks and chat history) for a chat request.
+
+    Returns:
+        Tuple of (relevant_chunks, chat_history)
+    """
+    relevant_chunks = None
+    chat_history = None
+
+    # Get chat history
+    if include_history:
+        messages = get_messages_for_transcript(db, transcript_id)
+        chat_history = [
+            {"role": m.role, "content": m.content} for m in messages[-history_limit:]
+        ]
+
+    # Get relevant chunks via RAG
+    if embedding_service and is_vector_store_available():
+        try:
+            if await embedding_service.is_available():
+                query_embedding = await embedding_service.embed_text(message)
+                chunks = search_similar_chunks(
+                    db, transcript_id, query_embedding, top_k=5
+                )
+                if chunks:
+                    relevant_chunks = [c.content for c in chunks]
+                    logger.info(
+                        f"RAG: Found {len(chunks)} relevant chunks for transcript {transcript_id}"
+                    )
+        except Exception as e:
+            logger.warning(f"RAG lookup failed, using fallback: {e}")
+
+    return relevant_chunks, chat_history
+
+
 @app.post("/api/chat")
 @limiter.limit("20/minute")
 async def chat(request: Request, data: ChatRequest, db: Session = Depends(get_db)):
+    """Chat with RAG-enhanced context from transcript."""
     if not service:
         api_error("SERVICE_NOT_READY", "Service not ready", 503)
+
+    relevant_chunks = None
+    chat_history = None
+
+    # If transcript_id provided, use RAG
+    if data.transcript_id:
+        transcript = get_transcript_by_id(db, data.transcript_id)
+        if transcript:
+            relevant_chunks, chat_history = await _get_rag_context(
+                db,
+                data.transcript_id,
+                data.message,
+                data.include_history,
+                data.history_limit,
+            )
+
+            # Fallback to full context if no RAG chunks found
+            if not relevant_chunks and not data.context:
+                data.context = transcript.cleaned_text or transcript.raw_text
 
     try:
         response = service.chat(
             message=data.message,
             context=data.context,
+            chat_history=chat_history,
+            relevant_chunks=relevant_chunks,
             stream=False,
         )
         reply = response.choices[0].message.content
-        return {"reply": reply}
+        return {"reply": reply, "used_rag": relevant_chunks is not None}
 
     except Exception as e:
         logger.error(f"Chat error: {e}")
@@ -395,16 +528,39 @@ async def chat(request: Request, data: ChatRequest, db: Session = Depends(get_db
 
 @app.post("/api/chat/stream")
 @limiter.limit("20/minute")
-async def chat_stream(request: Request, data: ChatRequest):
-    """Stream chat responses using Server-Sent Events."""
+async def chat_stream(
+    request: Request, data: ChatRequest, db: Session = Depends(get_db)
+):
+    """Stream chat responses with RAG support using Server-Sent Events."""
     if not service:
         api_error("SERVICE_NOT_READY", "Service not ready", 503)
+
+    relevant_chunks = None
+    chat_history = None
+
+    # If transcript_id provided, use RAG
+    if data.transcript_id:
+        transcript = get_transcript_by_id(db, data.transcript_id)
+        if transcript:
+            relevant_chunks, chat_history = await _get_rag_context(
+                db,
+                data.transcript_id,
+                data.message,
+                data.include_history,
+                data.history_limit,
+            )
+
+            # Fallback to full context if no RAG chunks found
+            if not relevant_chunks and not data.context:
+                data.context = transcript.cleaned_text or transcript.raw_text
 
     async def generate() -> AsyncGenerator[dict, None]:
         try:
             response = service.chat(
                 message=data.message,
                 context=data.context,
+                chat_history=chat_history,
+                relevant_chunks=relevant_chunks,
                 stream=True,
             )
 
@@ -420,6 +576,134 @@ async def chat_stream(request: Request, data: ChatRequest):
             yield {"event": "error", "data": str(e)}
 
     return EventSourceResponse(generate())
+
+
+# ============================================================================
+# RAG / Embedding Endpoints
+# ============================================================================
+
+
+async def _index_transcript(transcript_id: str, text: str) -> dict:
+    """
+    Index a transcript's text for RAG.
+
+    Returns dict with status info.
+    """
+    if not text:
+        return {"success": False, "error": "No text to index"}
+
+    if not embedding_service:
+        return {"success": False, "error": "Embedding service not configured"}
+
+    if not is_vector_store_available():
+        return {"success": False, "error": "Vector store not available"}
+
+    try:
+        if not await embedding_service.is_available():
+            return {"success": False, "error": "Embedding service unavailable"}
+
+        # Chunk and embed
+        chunks = embedding_service.chunk_text(text)
+        embeddings = await embedding_service.embed_batch([c["content"] for c in chunks])
+
+        # Save to database
+        db = SessionLocal()
+        try:
+            save_chunks_with_embeddings(db, transcript_id, chunks, embeddings)
+        finally:
+            db.close()
+
+        logger.info(f"Indexed transcript {transcript_id} with {len(chunks)} chunks")
+        return {"success": True, "chunks_created": len(chunks)}
+
+    except Exception as e:
+        logger.error(f"Indexing failed for {transcript_id}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/transcripts/{transcript_id}/reindex")
+@limiter.limit("10/minute")
+async def reindex_transcript(
+    request: Request,
+    transcript_id: str,
+    db: Session = Depends(get_db),
+):
+    """Recompute embeddings for a transcript."""
+    transcript = get_transcript_by_id(db, transcript_id)
+    if not transcript:
+        api_error("TRANSCRIPT_NOT_FOUND", f"Transcript {transcript_id} not found", 404)
+
+    # Use cleaned text if available, else raw text
+    text = transcript.cleaned_text or transcript.raw_text
+    if not text:
+        api_error("NO_TEXT", "Transcript has no text to index", 400)
+
+    result = await _index_transcript(transcript_id, text)
+
+    if not result["success"]:
+        api_error("REINDEX_FAILED", result.get("error", "Unknown error"), 500)
+
+    return {
+        "success": True,
+        "transcript_id": transcript_id,
+        "chunks_created": result["chunks_created"],
+    }
+
+
+@app.get("/api/transcripts/{transcript_id}/chunks")
+async def get_transcript_chunks_endpoint(
+    transcript_id: str,
+    db: Session = Depends(get_db),
+):
+    """Get chunks for a transcript (for debugging/inspection)."""
+    transcript = get_transcript_by_id(db, transcript_id)
+    if not transcript:
+        api_error("TRANSCRIPT_NOT_FOUND", f"Transcript {transcript_id} not found", 404)
+
+    chunks = get_chunks_for_transcript(db, transcript_id)
+    return {
+        "transcript_id": transcript_id,
+        "chunk_count": len(chunks),
+        "chunks": [
+            {
+                "id": c.id,
+                "chunkIndex": c.chunk_index,
+                "content": (
+                    c.content[:200] + "..." if len(c.content) > 200 else c.content
+                ),
+                "startChar": c.start_char,
+                "endChar": c.end_char,
+            }
+            for c in chunks
+        ],
+    }
+
+
+@app.get("/api/embeddings/status")
+async def get_embeddings_status():
+    """Check embedding service status."""
+    if not embedding_service:
+        return {
+            "enabled": False,
+            "available": False,
+            "reason": "Embedding service not configured",
+        }
+
+    available = await embedding_service.is_available()
+    vector_store = is_vector_store_available()
+
+    return {
+        "enabled": True,
+        "available": available and vector_store,
+        "embedding_service": {
+            "available": available,
+            "model": embedding_service.model,
+            "base_url": embedding_service.base_url,
+        },
+        "vector_store": {
+            "available": vector_store,
+        },
+    }
 
 
 # ============================================================================

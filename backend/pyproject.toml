@@ -16,6 +16,8 @@ dependencies = [
     "sse-starlette>=2.0",
     "reportlab>=4.0",
     "slowapi>=0.1.9",
+    "sqlite-vec>=0.1.1",
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]

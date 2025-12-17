@@ -4,6 +4,7 @@ Includes FTS5 full-text search support.
 """
 
 import logging
+import struct
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,6 +16,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     create_engine,
     text,
 )
@@ -56,6 +58,11 @@ class Transcript(Base):
     # Relationship to chat messages
     messages = relationship(
         "ChatMessage", back_populates="transcript", cascade="all, delete-orphan"
+    )
+
+    # Relationship to chunks (for RAG)
+    chunks = relationship(
+        "TranscriptChunk", back_populates="transcript", cascade="all, delete-orphan"
     )
 
     def to_dict(self) -> dict:
@@ -101,6 +108,35 @@ class Setting(Base):
 
     key = Column(String, primary_key=True)
     value = Column(Text, nullable=True)
+
+
+class TranscriptChunk(Base):
+    """Stores text chunks for RAG vector search."""
+
+    __tablename__ = "transcript_chunks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    transcript_id = Column(String, ForeignKey("transcripts.id"), nullable=False)
+    chunk_index = Column(Integer, nullable=False)
+    content = Column(Text, nullable=False)
+    start_char = Column(Integer, nullable=False)
+    end_char = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=utc_now)
+
+    transcript = relationship("Transcript", back_populates="chunks")
+
+    __table_args__ = (UniqueConstraint("transcript_id", "chunk_index"),)
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "transcriptId": self.transcript_id,
+            "chunkIndex": self.chunk_index,
+            "content": self.content,
+            "startChar": self.start_char,
+            "endChar": self.end_char,
+        }
 
 
 def _init_fts5(conn) -> None:
@@ -331,3 +367,231 @@ def set_setting(db: Session, key: str, value: str) -> Setting:
         db.add(setting)
     db.commit()
     return setting
+
+
+# =============================================================================
+# Vector Store Functions (sqlite-vec for RAG)
+# =============================================================================
+
+# Embedding dimension for nomic-embed-text
+EMBEDDING_DIM = 768
+
+# Global flag to track if vector store is available
+_vector_store_available: bool | None = None
+
+
+def init_vector_store(conn) -> bool:
+    """
+    Initialize sqlite-vec extension and virtual table.
+
+    Args:
+        conn: Raw SQLite connection (dbapi_connection)
+
+    Returns:
+        True if successful, False otherwise
+    """
+    global _vector_store_available
+
+    try:
+        import sqlite_vec
+
+        sqlite_vec.load(conn)
+        conn.execute(
+            f"""
+            CREATE VIRTUAL TABLE IF NOT EXISTS chunk_embeddings USING vec0(
+                chunk_id INTEGER PRIMARY KEY,
+                embedding float[{EMBEDDING_DIM}]
+            )
+        """
+        )
+        conn.commit()
+        _vector_store_available = True
+        logger.info("sqlite-vec vector store initialized")
+        return True
+    except ImportError:
+        logger.warning("sqlite-vec not installed, vector search disabled")
+        _vector_store_available = False
+        return False
+    except Exception as e:
+        logger.warning(f"Failed to initialize vector store: {e}")
+        _vector_store_available = False
+        return False
+
+
+def is_vector_store_available() -> bool:
+    """Check if vector store is available."""
+    return _vector_store_available is True
+
+
+def get_chunks_for_transcript(db: Session, transcript_id: str) -> list[TranscriptChunk]:
+    """Get all chunks for a transcript ordered by chunk_index."""
+    return (
+        db.query(TranscriptChunk)
+        .filter(TranscriptChunk.transcript_id == transcript_id)
+        .order_by(TranscriptChunk.chunk_index.asc())
+        .all()
+    )
+
+
+def delete_chunks_for_transcript(db: Session, transcript_id: str) -> int:
+    """
+    Delete all chunks and embeddings for a transcript.
+
+    Returns:
+        Number of chunks deleted
+    """
+    chunks = get_chunks_for_transcript(db, transcript_id)
+    count = len(chunks)
+
+    if count > 0 and is_vector_store_available():
+        # Delete embeddings first
+        chunk_ids = [c.id for c in chunks]
+        for chunk_id in chunk_ids:
+            try:
+                db.execute(
+                    text("DELETE FROM chunk_embeddings WHERE chunk_id = :id"),
+                    {"id": chunk_id},
+                )
+            except Exception as e:
+                logger.warning(f"Failed to delete embedding for chunk {chunk_id}: {e}")
+
+    # Delete chunks
+    db.query(TranscriptChunk).filter(
+        TranscriptChunk.transcript_id == transcript_id
+    ).delete()
+    db.commit()
+
+    return count
+
+
+def save_chunks_with_embeddings(
+    db: Session,
+    transcript_id: str,
+    chunks: list[dict],
+    embeddings: list[list[float]],
+) -> list[TranscriptChunk]:
+    """
+    Save chunks and their embeddings for a transcript.
+
+    Args:
+        db: Database session
+        transcript_id: ID of the transcript
+        chunks: List of chunk dicts with content, start_char, end_char, chunk_index
+        embeddings: List of embedding vectors (same length as chunks)
+
+    Returns:
+        List of created TranscriptChunk objects
+    """
+    # Delete existing chunks for this transcript
+    delete_chunks_for_transcript(db, transcript_id)
+
+    saved_chunks = []
+    for chunk_data, embedding in zip(chunks, embeddings, strict=True):
+        # Save chunk
+        chunk = TranscriptChunk(
+            transcript_id=transcript_id,
+            chunk_index=chunk_data["chunk_index"],
+            content=chunk_data["content"],
+            start_char=chunk_data["start_char"],
+            end_char=chunk_data["end_char"],
+        )
+        db.add(chunk)
+        db.flush()  # Get the chunk.id
+
+        # Save embedding if vector store available
+        if is_vector_store_available():
+            embedding_bytes = struct.pack(f"{len(embedding)}f", *embedding)
+            try:
+                db.execute(
+                    text(
+                        """
+                        INSERT OR REPLACE INTO chunk_embeddings(chunk_id, embedding)
+                        VALUES (:chunk_id, :embedding)
+                    """
+                    ),
+                    {"chunk_id": chunk.id, "embedding": embedding_bytes},
+                )
+            except Exception as e:
+                logger.warning(f"Failed to save embedding for chunk {chunk.id}: {e}")
+
+        saved_chunks.append(chunk)
+
+    db.commit()
+    return saved_chunks
+
+
+def search_similar_chunks(
+    db: Session,
+    transcript_id: str,
+    query_embedding: list[float],
+    top_k: int = 5,
+) -> list[TranscriptChunk]:
+    """
+    Find the most similar chunks to query embedding within a transcript.
+
+    Uses cosine distance for similarity search.
+
+    Args:
+        db: Database session
+        transcript_id: ID of the transcript to search
+        query_embedding: Query embedding vector
+        top_k: Number of chunks to retrieve
+
+    Returns:
+        List of most similar TranscriptChunk objects
+    """
+    if not is_vector_store_available():
+        logger.warning("Vector store not available, returning empty results")
+        return []
+
+    embedding_bytes = struct.pack(f"{len(query_embedding)}f", *query_embedding)
+
+    try:
+        # Query sqlite-vec for similar chunks, filtered by transcript_id
+        result = db.execute(
+            text(
+                """
+                SELECT tc.id, vec_distance_cosine(ce.embedding, :query) as distance
+                FROM chunk_embeddings ce
+                JOIN transcript_chunks tc ON tc.id = ce.chunk_id
+                WHERE tc.transcript_id = :transcript_id
+                ORDER BY distance ASC
+                LIMIT :top_k
+            """
+            ),
+            {
+                "query": embedding_bytes,
+                "transcript_id": transcript_id,
+                "top_k": top_k,
+            },
+        )
+
+        rows = result.fetchall()
+        if not rows:
+            return []
+
+        chunk_ids = [row[0] for row in rows]
+
+        # Fetch full chunk objects maintaining order
+        chunks = (
+            db.query(TranscriptChunk).filter(TranscriptChunk.id.in_(chunk_ids)).all()
+        )
+
+        # Maintain similarity order
+        id_order = {chunk_id: idx for idx, chunk_id in enumerate(chunk_ids)}
+        chunks.sort(key=lambda c: id_order.get(c.id, 999))
+
+        return chunks
+
+    except Exception as e:
+        logger.error(f"Vector search failed: {e}")
+        return []
+
+
+def get_transcript_chunk_count(db: Session, transcript_id: str) -> int:
+    """Get the number of chunks for a transcript."""
+    return (
+        db.query(TranscriptChunk)
+        .filter(TranscriptChunk.transcript_id == transcript_id)
+        .count()
+    )
