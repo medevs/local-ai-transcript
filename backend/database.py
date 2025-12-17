@@ -1,14 +1,26 @@
 """
 SQLite database layer using SQLAlchemy for transcript persistence.
+Includes FTS5 full-text search support.
 """
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, create_engine
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    text,
+)
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
+logger = logging.getLogger(__name__)
 
 # Database file location (in backend directory)
 DB_PATH = Path(__file__).parent / "transcripts.db"
@@ -91,9 +103,51 @@ class Setting(Base):
     value = Column(Text, nullable=True)
 
 
+def _init_fts5(conn) -> None:
+    """Initialize FTS5 virtual table and triggers for full-text search."""
+    conn.execute(text("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS transcripts_fts USING fts5(
+            id UNINDEXED, title, raw_text, cleaned_text,
+            content='transcripts', content_rowid='rowid'
+        )
+    """))
+    conn.execute(text("""
+        CREATE TRIGGER IF NOT EXISTS transcripts_ai AFTER INSERT ON transcripts BEGIN
+            INSERT INTO transcripts_fts(rowid, id, title, raw_text, cleaned_text)
+            VALUES (NEW.rowid, NEW.id, NEW.title, NEW.raw_text, NEW.cleaned_text);
+        END
+    """))
+    conn.execute(text("""
+        CREATE TRIGGER IF NOT EXISTS transcripts_ad AFTER DELETE ON transcripts BEGIN
+            INSERT INTO transcripts_fts(transcripts_fts, rowid, id, title, raw_text, cleaned_text)
+            VALUES ('delete', OLD.rowid, OLD.id, OLD.title, OLD.raw_text, OLD.cleaned_text);
+        END
+    """))
+    conn.execute(text("""
+        CREATE TRIGGER IF NOT EXISTS transcripts_au AFTER UPDATE ON transcripts BEGIN
+            INSERT INTO transcripts_fts(transcripts_fts, rowid, id, title, raw_text, cleaned_text)
+            VALUES ('delete', OLD.rowid, OLD.id, OLD.title, OLD.raw_text, OLD.cleaned_text);
+            INSERT INTO transcripts_fts(rowid, id, title, raw_text, cleaned_text)
+            VALUES (NEW.rowid, NEW.id, NEW.title, NEW.raw_text, NEW.cleaned_text);
+        END
+    """))
+    conn.commit()
+
+
 def init_db():
-    """Initialize database tables."""
+    """Initialize database tables and FTS5 search."""
     Base.metadata.create_all(bind=engine)
+    with engine.connect() as conn:
+        _init_fts5(conn)
+        logger.info("FTS5 full-text search initialized")
+
+
+def rebuild_fts_index() -> None:
+    """Rebuild FTS index from existing transcripts."""
+    with engine.connect() as conn:
+        conn.execute(text("INSERT INTO transcripts_fts(transcripts_fts) VALUES('rebuild')"))
+        conn.commit()
+        logger.info("FTS5 index rebuilt")
 
 
 def get_db():
@@ -116,6 +170,47 @@ def get_all_transcripts(db: Session, limit: int = 100) -> list[Transcript]:
         .limit(limit)
         .all()
     )
+
+
+def search_transcripts(db: Session, query: str, limit: int = 50) -> list[Transcript]:
+    """Search transcripts using FTS5 full-text search."""
+    if not query or not query.strip():
+        return get_all_transcripts(db, limit=limit)
+
+    search_term = query.strip().replace('"', '""')
+    search_term = f'"{search_term}"*'
+
+    try:
+        result = db.execute(
+            text("""
+                SELECT id FROM transcripts_fts
+                WHERE transcripts_fts MATCH :query
+                ORDER BY rank
+                LIMIT :limit
+            """),
+            {"query": search_term, "limit": limit},
+        )
+        ids = [row[0] for row in result.fetchall()]
+        if not ids:
+            return []
+        transcripts = db.query(Transcript).filter(Transcript.id.in_(ids)).all()
+        id_order = {id_: idx for idx, id_ in enumerate(ids)}
+        transcripts.sort(key=lambda t: id_order.get(t.id, 999))
+        return transcripts
+    except Exception as e:
+        logger.warning(f"FTS search failed, falling back to LIKE: {e}")
+        like_pattern = f"%{query.strip()}%"
+        return (
+            db.query(Transcript)
+            .filter(
+                (Transcript.title.ilike(like_pattern))
+                | (Transcript.raw_text.ilike(like_pattern))
+                | (Transcript.cleaned_text.ilike(like_pattern))
+            )
+            .order_by(Transcript.created_at.desc())
+            .limit(limit)
+            .all()
+        )
 
 
 def get_transcript_by_id(db: Session, transcript_id: str) -> Optional[Transcript]:

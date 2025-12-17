@@ -24,6 +24,7 @@ from database import (
     get_messages_for_transcript,
     get_transcript_by_id,
     init_db,
+    search_transcripts,
     update_transcript,
 )
 from transcription import TranscriptionService
@@ -169,6 +170,19 @@ async def list_transcripts(
     """Get all transcripts ordered by creation date."""
     transcripts = get_all_transcripts(db, limit=limit)
     return {"transcripts": [t.to_dict() for t in transcripts]}
+
+
+
+
+@app.get("/api/transcripts/search")
+async def search_transcripts_endpoint(
+    q: str = Query(default="", description="Search query"),
+    limit: int = Query(default=50, le=200),
+    db: Session = Depends(get_db),
+):
+    """Search transcripts by title and content using full-text search."""
+    transcripts = search_transcripts(db, q, limit=limit)
+    return {"transcripts": [t.to_dict() for t in transcripts], "query": q}
 
 
 @app.get("/api/transcripts/{transcript_id}")
