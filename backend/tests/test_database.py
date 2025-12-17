@@ -2,26 +2,22 @@
 Unit tests for database.py - CRUD operations and models.
 """
 
-import pytest
 from sqlalchemy.orm import Session
 
 from database import (
-    Transcript,
-    ChatMessage,
     Setting,
-    create_transcript,
-    get_transcript_by_id,
-    get_all_transcripts,
-    update_transcript,
-    delete_transcript,
     add_message,
+    create_transcript,
+    delete_transcript,
+    generate_id,
+    get_all_transcripts,
     get_messages_for_transcript,
     get_setting,
+    get_transcript_by_id,
     set_setting,
-    generate_id,
+    update_transcript,
     utc_now,
 )
-
 
 # =============================================================================
 # Helper Function Tests
@@ -103,9 +99,9 @@ class TestTranscriptCRUD:
 
     def test_get_all_transcripts_ordered_by_date(self, db_session: Session):
         """Transcripts should be ordered by created_at descending."""
-        t1 = create_transcript(db_session, title="First")
-        t2 = create_transcript(db_session, title="Second")
-        t3 = create_transcript(db_session, title="Third")
+        create_transcript(db_session, title="First")
+        create_transcript(db_session, title="Second")
+        create_transcript(db_session, title="Third")
 
         transcripts = get_all_transcripts(db_session)
 
@@ -217,9 +213,7 @@ class TestChatMessageCRUD:
 
     def test_add_message_user(self, db_session: Session, sample_transcript):
         """Add a user message to a transcript."""
-        message = add_message(
-            db_session, sample_transcript.id, "user", "What is this?"
-        )
+        message = add_message(db_session, sample_transcript.id, "user", "What is this?")
 
         assert message is not None
         assert message.transcript_id == sample_transcript.id
@@ -236,12 +230,16 @@ class TestChatMessageCRUD:
         assert message.role == "assistant"
         assert message.content == "This is a test."
 
-    def test_get_messages_for_transcript_empty(self, db_session: Session, sample_transcript):
+    def test_get_messages_for_transcript_empty(
+        self, db_session: Session, sample_transcript
+    ):
         """Return empty list when transcript has no messages."""
         messages = get_messages_for_transcript(db_session, sample_transcript.id)
         assert messages == []
 
-    def test_get_messages_for_transcript_ordered(self, db_session: Session, sample_transcript):
+    def test_get_messages_for_transcript_ordered(
+        self, db_session: Session, sample_transcript
+    ):
         """Messages should be ordered by created_at ascending."""
         add_message(db_session, sample_transcript.id, "user", "First")
         add_message(db_session, sample_transcript.id, "assistant", "Second")

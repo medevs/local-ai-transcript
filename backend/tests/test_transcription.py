@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # =============================================================================
 # Module-level mocking setup
 # =============================================================================
@@ -199,7 +198,9 @@ class TestTranscriptionServiceTranscribe:
             condition_on_previous_text=False,
         )
 
-    def test_transcribe_empty_segments(self, mock_whisper_instance, mock_openai_instance):
+    def test_transcribe_empty_segments(
+        self, mock_whisper_instance, mock_openai_instance
+    ):
         """transcribe() should handle empty segments."""
         mock_whisper_instance.transcribe.return_value = ([], MagicMock())
         mock_faster_whisper.WhisperModel.return_value = mock_whisper_instance
@@ -266,7 +267,9 @@ class TestTranscriptionServiceClean:
         self, mock_whisper_instance, mock_openai_instance
     ):
         """clean_with_llm() should return raw text if provider fails."""
-        mock_openai_instance.chat.completions.create.side_effect = Exception("LLM failed")
+        mock_openai_instance.chat.completions.create.side_effect = Exception(
+            "LLM failed"
+        )
         mock_faster_whisper.WhisperModel.return_value = mock_whisper_instance
         mock_openai.OpenAI.return_value = mock_openai_instance
 
@@ -361,7 +364,9 @@ class TestTranscriptionServiceGenerateTitle:
         self, mock_whisper_instance, mock_openai_instance
     ):
         """generate_title() should use first 3 words if LLM fails."""
-        mock_openai_instance.chat.completions.create.side_effect = Exception("LLM failed")
+        mock_openai_instance.chat.completions.create.side_effect = Exception(
+            "LLM failed"
+        )
         mock_faster_whisper.WhisperModel.return_value = mock_whisper_instance
         mock_openai.OpenAI.return_value = mock_openai_instance
 
@@ -465,7 +470,9 @@ class TestTranscriptionServiceChat:
 class TestTranscriptionServiceTranscribeFile:
     """Tests for transcribe_file() method."""
 
-    def test_transcribe_file_with_llm(self, mock_whisper_instance, mock_openai_instance):
+    def test_transcribe_file_with_llm(
+        self, mock_whisper_instance, mock_openai_instance
+    ):
         """transcribe_file() should transcribe and clean with LLM."""
         mock_segments = [MagicMock(text="Raw transcribed text.")]
         mock_whisper_instance.transcribe.return_value = (mock_segments, MagicMock())
@@ -527,7 +534,7 @@ class TestSystemPrompt:
         mock_faster_whisper.WhisperModel.return_value = mock_whisper_instance
         mock_openai.OpenAI.return_value = mock_openai_instance
 
-        from transcription import TranscriptionService, SYSTEM_PROMPT
+        from transcription import SYSTEM_PROMPT, TranscriptionService
 
         service = TranscriptionService(
             whisper_model="base.en",

@@ -1,8 +1,9 @@
 import logging
 import os
 import tempfile
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Annotated, AsyncGenerator, Optional
+from typing import Annotated, NoReturn
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
@@ -45,18 +46,18 @@ logger = logging.getLogger(__name__)
 # Request/Response models
 class CleanRequest(BaseModel):
     text: str
-    system_prompt: Optional[str] = None
+    system_prompt: str | None = None
 
 
 class ChatRequest(BaseModel):
     message: str
-    context: Optional[str] = None
+    context: str | None = None
 
 
 class TranscriptCreate(BaseModel):
     title: str
-    rawText: Optional[str] = None
-    cleanedText: Optional[str] = None
+    rawText: str | None = None
+    cleanedText: str | None = None
 
 
 class GenerateTitleRequest(BaseModel):
@@ -64,9 +65,9 @@ class GenerateTitleRequest(BaseModel):
 
 
 class TranscriptUpdate(BaseModel):
-    title: Optional[str] = None
-    rawText: Optional[str] = None
-    cleanedText: Optional[str] = None
+    title: str | None = None
+    rawText: str | None = None
+    cleanedText: str | None = None
 
 
 class MessageCreate(BaseModel):
@@ -126,7 +127,9 @@ app.add_middleware(
 
 
 # Error helper
-def api_error(code: str, message: str, status_code: int = 400, details: str = None):
+def api_error(
+    code: str, message: str, status_code: int = 400, details: str | None = None
+) -> NoReturn:
     """Create a structured error response."""
     error = {"code": code, "message": message}
     if details:
@@ -170,8 +173,6 @@ async def list_transcripts(
     """Get all transcripts ordered by creation date."""
     transcripts = get_all_transcripts(db, limit=limit)
     return {"transcripts": [t.to_dict() for t in transcripts]}
-
-
 
 
 @app.get("/api/transcripts/search")
@@ -224,9 +225,7 @@ async def update_existing_transcript(
 
 
 @app.delete("/api/transcripts/{transcript_id}")
-async def delete_existing_transcript(
-    transcript_id: str, db: Session = Depends(get_db)
-):
+async def delete_existing_transcript(transcript_id: str, db: Session = Depends(get_db)):
     """Delete a transcript and its chat messages."""
     success = delete_transcript(db, transcript_id)
     if not success:
@@ -453,7 +452,7 @@ async def export_transcript(
             },
         )
 
-    elif format == "txt":
+    if format == "txt":
         content = generate_plaintext(transcript, messages)
         return StreamingResponse(
             iter([content]),
@@ -463,7 +462,7 @@ async def export_transcript(
             },
         )
 
-    elif format == "pdf":
+    if format == "pdf":
         pdf_bytes = generate_pdf(transcript, messages)
         return StreamingResponse(
             iter([pdf_bytes]),
@@ -472,6 +471,9 @@ async def export_transcript(
                 "Content-Disposition": f'attachment; filename="{transcript.title}.pdf"'
             },
         )
+
+    # Should never reach here due to regex validation, but satisfy type checker
+    api_error("INVALID_FORMAT", f"Unsupported format: {format}", 400)
 
 
 def generate_markdown(transcript, messages) -> str:

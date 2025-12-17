@@ -2,7 +2,6 @@
 API integration tests for transcript endpoints.
 """
 
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -65,12 +64,12 @@ class TestTranscriptListEndpoint:
         assert len(data["transcripts"]) == 5
 
 
-
-
 class TestTranscriptSearchEndpoint:
     """Tests for GET /api/transcripts/search endpoint."""
 
-    def test_search_transcripts_empty_query(self, client: TestClient, sample_transcript):
+    def test_search_transcripts_empty_query(
+        self, client: TestClient, sample_transcript
+    ):
         """Empty query returns all transcripts."""
         response = client.get("/api/transcripts/search?q=")
 
@@ -84,8 +83,12 @@ class TestTranscriptSearchEndpoint:
         """Search finds transcripts by title."""
         from database import create_transcript
 
-        create_transcript(db_session, title="Meeting Notes", raw_text="Discussion about project")
-        create_transcript(db_session, title="Shopping List", raw_text="Milk, eggs, bread")
+        create_transcript(
+            db_session, title="Meeting Notes", raw_text="Discussion about project"
+        )
+        create_transcript(
+            db_session, title="Shopping List", raw_text="Milk, eggs, bread"
+        )
 
         response = client.get("/api/transcripts/search?q=meeting")
 
@@ -99,7 +102,9 @@ class TestTranscriptSearchEndpoint:
         """Search finds transcripts by raw_text content."""
         from database import create_transcript
 
-        create_transcript(db_session, title="Note 1", raw_text="Python programming guide")
+        create_transcript(
+            db_session, title="Note 1", raw_text="Python programming guide"
+        )
         create_transcript(db_session, title="Note 2", raw_text="JavaScript tutorial")
 
         response = client.get("/api/transcripts/search?q=python")
@@ -122,7 +127,9 @@ class TestTranscriptSearchEndpoint:
         from database import create_transcript
 
         for i in range(10):
-            create_transcript(db_session, title=f"Test Doc {i}", raw_text="Common content here")
+            create_transcript(
+                db_session, title=f"Test Doc {i}", raw_text="Common content here"
+            )
 
         response = client.get("/api/transcripts/search?q=common&limit=3")
 

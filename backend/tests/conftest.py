@@ -6,7 +6,7 @@ Provides test database, API client, and mock services.
 
 import os
 import sys
-from typing import Generator
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,7 +18,6 @@ from sqlalchemy.pool import StaticPool
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import Base, get_db
-
 
 # =============================================================================
 # Database Fixtures
@@ -41,10 +40,10 @@ def test_engine():
 @pytest.fixture(scope="function")
 def db_session(test_engine) -> Generator[Session, None, None]:
     """Create a database session for testing."""
-    TestingSessionLocal = sessionmaker(
+    testing_session_local = sessionmaker(
         autocommit=False, autoflush=False, bind=test_engine
     )
-    session = TestingSessionLocal()
+    session = testing_session_local()
     try:
         yield session
     finally:
@@ -122,7 +121,9 @@ def app(db_session: Session, mock_transcription_service):
         # We also need to patch TranscriptionService to prevent it from loading
         with patch.object(app_module, "service", mock_transcription_service):
             with patch.object(
-                app_module, "TranscriptionService", return_value=mock_transcription_service
+                app_module,
+                "TranscriptionService",
+                return_value=mock_transcription_service,
             ):
                 yield app_module.app
 

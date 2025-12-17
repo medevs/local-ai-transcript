@@ -4,7 +4,6 @@ API integration tests for AI/transcription endpoints.
 These tests use mocked services to avoid requiring actual Whisper/LLM.
 """
 
-import pytest
 from fastapi.testclient import TestClient
 
 

@@ -5,9 +5,8 @@ Includes FTS5 full-text search support.
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 from sqlalchemy import (
     Column,
@@ -20,6 +19,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
+
 logger = logging.getLogger(__name__)
 
 # Database file location (in backend directory)
@@ -38,7 +38,7 @@ def generate_id() -> str:
 
 def utc_now() -> datetime:
     """Get current UTC timestamp."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Transcript(Base):
@@ -105,32 +105,48 @@ class Setting(Base):
 
 def _init_fts5(conn) -> None:
     """Initialize FTS5 virtual table and triggers for full-text search."""
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         CREATE VIRTUAL TABLE IF NOT EXISTS transcripts_fts USING fts5(
             id UNINDEXED, title, raw_text, cleaned_text,
             content='transcripts', content_rowid='rowid'
         )
-    """))
-    conn.execute(text("""
+    """
+        )
+    )
+    conn.execute(
+        text(
+            """
         CREATE TRIGGER IF NOT EXISTS transcripts_ai AFTER INSERT ON transcripts BEGIN
             INSERT INTO transcripts_fts(rowid, id, title, raw_text, cleaned_text)
             VALUES (NEW.rowid, NEW.id, NEW.title, NEW.raw_text, NEW.cleaned_text);
         END
-    """))
-    conn.execute(text("""
+    """
+        )
+    )
+    conn.execute(
+        text(
+            """
         CREATE TRIGGER IF NOT EXISTS transcripts_ad AFTER DELETE ON transcripts BEGIN
             INSERT INTO transcripts_fts(transcripts_fts, rowid, id, title, raw_text, cleaned_text)
             VALUES ('delete', OLD.rowid, OLD.id, OLD.title, OLD.raw_text, OLD.cleaned_text);
         END
-    """))
-    conn.execute(text("""
+    """
+        )
+    )
+    conn.execute(
+        text(
+            """
         CREATE TRIGGER IF NOT EXISTS transcripts_au AFTER UPDATE ON transcripts BEGIN
             INSERT INTO transcripts_fts(transcripts_fts, rowid, id, title, raw_text, cleaned_text)
             VALUES ('delete', OLD.rowid, OLD.id, OLD.title, OLD.raw_text, OLD.cleaned_text);
             INSERT INTO transcripts_fts(rowid, id, title, raw_text, cleaned_text)
             VALUES (NEW.rowid, NEW.id, NEW.title, NEW.raw_text, NEW.cleaned_text);
         END
-    """))
+    """
+        )
+    )
     conn.commit()
 
 
@@ -145,7 +161,9 @@ def init_db():
 def rebuild_fts_index() -> None:
     """Rebuild FTS index from existing transcripts."""
     with engine.connect() as conn:
-        conn.execute(text("INSERT INTO transcripts_fts(transcripts_fts) VALUES('rebuild')"))
+        conn.execute(
+            text("INSERT INTO transcripts_fts(transcripts_fts) VALUES('rebuild')")
+        )
         conn.commit()
         logger.info("FTS5 index rebuilt")
 
@@ -165,10 +183,7 @@ def get_db():
 def get_all_transcripts(db: Session, limit: int = 100) -> list[Transcript]:
     """Get all transcripts ordered by creation date (newest first)."""
     return (
-        db.query(Transcript)
-        .order_by(Transcript.created_at.desc())
-        .limit(limit)
-        .all()
+        db.query(Transcript).order_by(Transcript.created_at.desc()).limit(limit).all()
     )
 
 
@@ -182,12 +197,14 @@ def search_transcripts(db: Session, query: str, limit: int = 50) -> list[Transcr
 
     try:
         result = db.execute(
-            text("""
+            text(
+                """
                 SELECT id FROM transcripts_fts
                 WHERE transcripts_fts MATCH :query
                 ORDER BY rank
                 LIMIT :limit
-            """),
+            """
+            ),
             {"query": search_term, "limit": limit},
         )
         ids = [row[0] for row in result.fetchall()]
@@ -213,7 +230,7 @@ def search_transcripts(db: Session, query: str, limit: int = 50) -> list[Transcr
         )
 
 
-def get_transcript_by_id(db: Session, transcript_id: str) -> Optional[Transcript]:
+def get_transcript_by_id(db: Session, transcript_id: str) -> Transcript | None:
     """Get a single transcript by ID."""
     return db.query(Transcript).filter(Transcript.id == transcript_id).first()
 
@@ -221,8 +238,8 @@ def get_transcript_by_id(db: Session, transcript_id: str) -> Optional[Transcript
 def create_transcript(
     db: Session,
     title: str,
-    raw_text: Optional[str] = None,
-    cleaned_text: Optional[str] = None,
+    raw_text: str | None = None,
+    cleaned_text: str | None = None,
 ) -> Transcript:
     """Create a new transcript."""
     transcript = Transcript(
@@ -240,10 +257,10 @@ def create_transcript(
 def update_transcript(
     db: Session,
     transcript_id: str,
-    title: Optional[str] = None,
-    raw_text: Optional[str] = None,
-    cleaned_text: Optional[str] = None,
-) -> Optional[Transcript]:
+    title: str | None = None,
+    raw_text: str | None = None,
+    cleaned_text: str | None = None,
+) -> Transcript | None:
     """Update an existing transcript."""
     transcript = get_transcript_by_id(db, transcript_id)
     if not transcript:
@@ -273,9 +290,7 @@ def delete_transcript(db: Session, transcript_id: str) -> bool:
     return True
 
 
-def get_messages_for_transcript(
-    db: Session, transcript_id: str
-) -> list[ChatMessage]:
+def get_messages_for_transcript(db: Session, transcript_id: str) -> list[ChatMessage]:
     """Get all chat messages for a transcript."""
     return (
         db.query(ChatMessage)
@@ -300,7 +315,7 @@ def add_message(
     return message
 
 
-def get_setting(db: Session, key: str) -> Optional[str]:
+def get_setting(db: Session, key: str) -> str | None:
     """Get a setting value by key."""
     setting = db.query(Setting).filter(Setting.key == key).first()
     return setting.value if setting else None

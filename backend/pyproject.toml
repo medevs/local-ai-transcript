@@ -68,4 +68,8 @@ ignore = [
     "E111",   # Indentation is not a multiple of 4 (Black handles this)
     "E114",   # Indentation is not a multiple of 4 (comment) (Black handles this)
     "E117",   # Over-indented (Black handles this)
+    "B008",   # Depends() in defaults is standard FastAPI pattern
+    "N815",   # camelCase needed for API contract compatibility
+    "RET504", # Unnecessary assignment before return (readability preference)
+    "SIM117", # Nested with statements (readability preference)
 ]

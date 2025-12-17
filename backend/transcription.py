@@ -8,7 +8,6 @@ Supports optional fallback provider for reliability.
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 from faster_whisper import WhisperModel
 from openai import OpenAI
@@ -61,9 +60,9 @@ class TranscriptionService:
         llm_base_url: str,
         llm_api_key: str,
         llm_model: str,
-        fallback_base_url: Optional[str] = None,
-        fallback_api_key: Optional[str] = None,
-        fallback_model: Optional[str] = None,
+        fallback_base_url: str | None = None,
+        fallback_api_key: str | None = None,
+        fallback_model: str | None = None,
     ):
         # Initialize Whisper
         logger.info(f"Loading Whisper model '{whisper_model}'...")
@@ -80,7 +79,7 @@ class TranscriptionService:
         )
 
         # Initialize fallback provider if configured
-        self.fallback_provider: Optional[LLMProvider] = None
+        self.fallback_provider: LLMProvider | None = None
         if fallback_base_url and fallback_api_key and fallback_model:
             self.fallback_provider = LLMProvider(
                 fallback_base_url, fallback_api_key, fallback_model, "Fallback LLM"
@@ -106,9 +105,7 @@ class TranscriptionService:
         """Get the default system prompt for cleaning."""
         return SYSTEM_PROMPT
 
-    def clean_with_llm(
-        self, text: str, system_prompt: Optional[str] = None
-    ) -> str:
+    def clean_with_llm(self, text: str, system_prompt: str | None = None) -> str:
         """Clean transcribed text using LLM."""
         if not text:
             return ""
@@ -176,7 +173,7 @@ class TranscriptionService:
                 )
                 title = response.choices[0].message.content.strip()
                 # Clean up: remove quotes, limit length
-                title = title.strip('"\'').strip()
+                title = title.strip("\"'").strip()
                 # Limit to ~5 words max
                 words = title.split()[:5]
                 title = " ".join(words)
@@ -194,7 +191,7 @@ class TranscriptionService:
     def chat(
         self,
         message: str,
-        context: Optional[str] = None,
+        context: str | None = None,
         stream: bool = False,
     ):
         """
