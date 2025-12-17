@@ -75,6 +75,7 @@ export const CleanResponseSchema = z.object({
 
 export const ChatResponseSchema = z.object({
   reply: z.string(),
+  used_rag: z.boolean().optional(),
 });
 
 export const SystemPromptResponseSchema = z.object({
@@ -308,14 +309,27 @@ export async function generateTitle(text: string): Promise<string> {
 // Chat API
 // ============================================================================
 
+export interface ChatOptions {
+  transcriptId?: string;
+  context?: string;
+  includeHistory?: boolean;
+  historyLimit?: number;
+}
+
 export async function sendChatMessage(
   message: string,
-  context?: string
+  options: ChatOptions = {}
 ): Promise<string> {
   const response = await fetch(`${API_BASE}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, context }),
+    body: JSON.stringify({
+      message,
+      transcript_id: options.transcriptId,
+      context: options.context,
+      include_history: options.includeHistory ?? true,
+      history_limit: options.historyLimit ?? 10,
+    }),
   });
 
   const data = await handleResponse(response, ChatResponseSchema);
@@ -327,7 +341,7 @@ export function streamChatMessage(
   onChunk: (chunk: string) => void,
   onDone: () => void,
   onError: (error: string) => void,
-  context?: string
+  options: ChatOptions = {}
 ): () => void {
   const controller = new AbortController();
 
@@ -336,7 +350,13 @@ export function streamChatMessage(
       const response = await fetch(`${API_BASE}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, context }),
+        body: JSON.stringify({
+          message,
+          transcript_id: options.transcriptId,
+          context: options.context,
+          include_history: options.includeHistory ?? true,
+          history_limit: options.historyLimit ?? 10,
+        }),
         signal: controller.signal,
       });
 
@@ -351,6 +371,7 @@ export function streamChatMessage(
 
       const decoder = new TextDecoder();
       let buffer = "";
+      let currentEvent = "message";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -361,16 +382,20 @@ export function streamChatMessage(
         buffer = lines.pop() || "";
 
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
+          if (line.startsWith("event: ")) {
+            currentEvent = line.slice(7).trim();
+            if (currentEvent === "done") {
+              onDone();
+              return;
+            }
+          } else if (line.startsWith("data: ")) {
             const data = line.slice(6);
-            if (data) {
+            if (currentEvent === "error") {
+              onError(data || "Unknown error");
+              return;
+            } else if (data) {
               onChunk(data);
             }
-          } else if (line.startsWith("event: done")) {
-            onDone();
-            return;
-          } else if (line.startsWith("event: error")) {
-            // Next line will have the error data
           }
         }
       }
@@ -435,4 +460,44 @@ export async function downloadExport(
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// ============================================================================
+// RAG / Embeddings API
+// ============================================================================
+
+export const EmbeddingsStatusSchema = z.object({
+  enabled: z.boolean(),
+  available: z.boolean(),
+  reason: z.string().optional(),
+  embedding_service: z.object({
+    available: z.boolean(),
+    model: z.string(),
+    base_url: z.string(),
+  }).optional(),
+  vector_store: z.object({
+    available: z.boolean(),
+  }).optional(),
+});
+
+export type EmbeddingsStatus = z.infer<typeof EmbeddingsStatusSchema>;
+
+export async function fetchEmbeddingsStatus(): Promise<EmbeddingsStatus> {
+  const response = await fetch(`${API_BASE}/embeddings/status`);
+  return handleResponse(response, EmbeddingsStatusSchema);
+}
+
+export async function reindexTranscript(transcriptId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/transcripts/${transcriptId}/reindex`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new ApiError(
+      "REINDEX_FAILED",
+      "Failed to reindex transcript",
+      undefined,
+      response.status
+    );
+  }
 }

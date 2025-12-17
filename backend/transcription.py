@@ -192,29 +192,60 @@ class TranscriptionService:
         self,
         message: str,
         context: str | None = None,
+        chat_history: list[dict] | None = None,
+        relevant_chunks: list[str] | None = None,
         stream: bool = False,
     ):
         """
-        Send a chat message with optional transcript context.
+        Send a chat message with RAG-enhanced context and chat history.
 
         Args:
             message: User's message
-            context: Optional transcript context
+            context: Full transcript context (fallback if no RAG chunks)
+            chat_history: Previous messages [{"role": "user/assistant", "content": "..."}]
+            relevant_chunks: Pre-retrieved relevant chunks from RAG
             stream: If True, return a streaming response
 
         Returns:
             Chat response (streaming or non-streaming)
         """
-        system_prompt = (
-            "You are a helpful assistant. Use the provided context to answer "
-            "the user's question.\nIf the context is empty or irrelevant, "
-            f"answer generally.\n\nContext:\n{context or ''}"
-        )
+        # Build context from relevant chunks if available, else use full context
+        if relevant_chunks:
+            chunk_context = "\n\n---\n\n".join(relevant_chunks)
+            context_section = (
+                f"Relevant excerpts from the transcript:\n\n{chunk_context}"
+            )
+        elif context:
+            context_section = f"Full transcript:\n\n{context}"
+        else:
+            context_section = "No transcript context available."
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": message},
-        ]
+        system_prompt = f"""You are a precise assistant that answers questions ONLY based on the provided transcript context.
+
+RULES:
+1. ONLY use information from the context below to answer
+2. If the answer is not in the context, say "I couldn't find that information in the transcript"
+3. Quote relevant parts of the transcript when helpful
+4. Be concise and direct
+5. Never make up information not present in the context
+
+{context_section}"""
+
+        messages = [{"role": "system", "content": system_prompt}]
+
+        # Add chat history (limit to prevent token overflow)
+        max_history_messages = 10
+        if chat_history:
+            for msg in chat_history[-max_history_messages:]:
+                messages.append(
+                    {
+                        "role": msg["role"],
+                        "content": msg["content"],
+                    }
+                )
+
+        # Add current user message
+        messages.append({"role": "user", "content": message})
 
         # Try primary, then fallback
         providers = [self.primary_provider]
