@@ -67,9 +67,10 @@ local-ai-transcript-app/
 │               ├── toggle.tsx
 │               └── tooltip.tsx
 ├── backend/
-│   ├── app.py                     # FastAPI routes (19 endpoints)
+│   ├── app.py                     # FastAPI routes (22 endpoints)
 │   ├── transcription.py           # Whisper + LLM service
 │   ├── database.py                # SQLAlchemy models and CRUD
+│   ├── embeddings.py              # RAG: Ollama embeddings + text chunking
 │   ├── system_prompt.txt          # Default LLM cleaning prompt
 │   ├── pyproject.toml             # Dependencies and tool config
 │   ├── uv.lock                    # Dependency lock file
@@ -77,7 +78,7 @@ local-ai-transcript-app/
 │   ├── .env.example               # Configuration template
 │   ├── pytest.ini                 # Test configuration
 │   ├── transcripts.db             # SQLite database (generated)
-│   └── tests/                     # Backend test suite (81 tests)
+│   └── tests/                     # Backend test suite (86 tests)
 │       ├── conftest.py            # Fixtures: test DB, mocked services
 │       ├── test_database.py       # Database CRUD tests (26)
 │       ├── test_transcription.py  # TranscriptionService tests (20)
@@ -126,14 +127,15 @@ local-ai-transcript-app/
 
 | File | Purpose |
 |------|---------|
-| `app.py` | FastAPI application with 19 API endpoints |
+| `app.py` | FastAPI application with 22 API endpoints |
 | `transcription.py` | `TranscriptionService` class (Whisper STT + LLM client) |
-| `database.py` | SQLAlchemy models (`Transcript`, `ChatMessage`, `Setting`) and CRUD |
+| `database.py` | SQLAlchemy models (`Transcript`, `ChatMessage`, `TranscriptChunk`, `Setting`) and CRUD |
+| `embeddings.py` | `EmbeddingService` class (Ollama embeddings + text chunking for RAG) |
 | `system_prompt.txt` | Default prompt for LLM text cleaning |
 | `pyproject.toml` | Python dependencies, Ruff/Black configuration |
 | `.env.example` | Environment variable template |
 
-### API Endpoints (19 total)
+### API Endpoints (22 total)
 
 **Status & System:**
 - `GET /api/status` – Service health check
@@ -157,8 +159,13 @@ local-ai-transcript-app/
 - `POST /api/transcribe` – Transcribe audio file
 - `POST /api/clean` – Clean text with LLM
 - `POST /api/generate-title` – Generate AI title
-- `POST /api/chat` – Non-streaming chat
-- `POST /api/chat/stream` – Streaming chat (SSE)
+- `POST /api/chat` – Non-streaming chat (with RAG support)
+- `POST /api/chat/stream` – Streaming chat (SSE, with RAG support)
+
+**RAG & Embeddings:**
+- `GET /api/transcripts/:id/chunks` – Get transcript chunks
+- `POST /api/transcripts/:id/reindex` – Recompute embeddings
+- `GET /api/embeddings/status` – Check embedding service availability
 
 ## Database Schema
 
@@ -186,6 +193,23 @@ CREATE TABLE chat_messages (
 CREATE TABLE settings (
     key VARCHAR PRIMARY KEY,
     value TEXT
+);
+
+-- Transcript chunks for RAG
+CREATE TABLE transcript_chunks (
+    id INTEGER PRIMARY KEY,
+    transcript_id VARCHAR REFERENCES transcripts(id) ON DELETE CASCADE,
+    chunk_index INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    start_char INTEGER NOT NULL,
+    end_char INTEGER NOT NULL,
+    created_at DATETIME
+);
+
+-- Vector embeddings (sqlite-vec virtual table)
+CREATE VIRTUAL TABLE chunk_embeddings USING vec0(
+    chunk_id INTEGER PRIMARY KEY,
+    embedding float[768]
 );
 ```
 
@@ -272,6 +296,8 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs on push/PR to main
 - OpenAI SDK 1.0.0 (LLM client)
 - ReportLab 4.0 (PDF generation)
 - slowapi 0.1.9 (rate limiting)
+- sqlite-vec 0.1.1 (vector similarity search)
+- httpx 0.27 (async HTTP client for Ollama embeddings)
 - uvicorn (ASGI server)
 
 ### Infrastructure
@@ -287,3 +313,5 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs on push/PR to main
 - Default Whisper model is `base.en` – change via `WHISPER_MODEL` env var
 - Transcript history persists in SQLite at `backend/transcripts.db`
 - Docker volumes persist database and Whisper model cache between restarts
+- **RAG (Retrieval-Augmented Generation)** is optional – if Ollama embeddings aren't available, chat falls back to full transcript context
+- To enable RAG: `ollama pull nomic-embed-text` and configure `EMBEDDING_BASE_URL` and `EMBEDDING_MODEL` in `.env`

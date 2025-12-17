@@ -69,6 +69,12 @@ This project currently has **0% test coverage**. When adding new features:
 - Backend: Use pytest + pytest-asyncio + httpx
 - Frontend: Use Vitest + React Testing Library
 
+## Git Commit Rules
+
+- **Commit messages must be 15 words or less**
+- Use conventional commit prefixes: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`
+- Keep messages concise and descriptive
+
 ## Security Notes
 
 - Never commit `.env` files with real credentials

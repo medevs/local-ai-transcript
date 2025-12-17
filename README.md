@@ -7,6 +7,7 @@ An AI-powered voice transcription application with a React frontend and FastAPI 
 - Browser recording and file upload
 - Local Whisper speech-to-text
 - Optional LLM cleaning (OpenAI API-compatible providers)
+- **RAG-powered chat** with semantic search (sqlite-vec + Ollama embeddings)
 - Streaming chat with transcript context
 - Export to Markdown, TXT, or PDF
 - Persistent transcript history (SQLite)
@@ -58,6 +59,10 @@ LLM_MODEL=llama2
 # Whisper Model (default: base.en)
 # Options: tiny, tiny.en, base, base.en, small, small.en, medium, large-v3
 WHISPER_MODEL=base.en
+
+# Embeddings for RAG (optional, enables semantic search)
+EMBEDDING_BASE_URL=http://localhost:11434
+EMBEDDING_MODEL=nomic-embed-text
 
 # Optional: Fallback to OpenAI if Ollama fails
 LLM_FALLBACK_BASE_URL=https://api.openai.com/v1
@@ -170,6 +175,9 @@ npm run dev
 | POST | `/api/generate-title` | Generate AI title |
 | POST | `/api/chat` | Chat (non-streaming) |
 | POST | `/api/chat/stream` | Chat (SSE streaming) |
+| GET | `/api/transcripts/:id/chunks` | Get transcript chunks |
+| POST | `/api/transcripts/:id/reindex` | Reindex transcript for RAG |
+| GET | `/api/embeddings/status` | Check embedding service status |
 
 ### Rate Limits
 
@@ -222,6 +230,11 @@ Configure via environment variables in `.env` or docker-compose.
 - Check that Ollama is running: `curl http://localhost:11434/api/tags`
 - Pull a model: `ollama pull llama2`
 - Check logs: `docker compose logs ollama`
+
+### RAG/Embeddings not working
+- Pull the embedding model: `ollama pull nomic-embed-text`
+- Check embedding status: `curl http://localhost:8000/api/embeddings/status`
+- RAG gracefully falls back to full transcript context if unavailable
 
 ### Docker build fails
 - Ensure Docker has enough memory (at least 4GB)
