@@ -188,7 +188,7 @@ CREATE TABLE settings (
 | **No authentication** | CRITICAL | All endpoints | Implement JWT or API key auth |
 | **MIME type spoofing** | HIGH | `app.py:271-276` | Validate file content with magic bytes |
 | ~~**No rate limiting**~~ | ~~HIGH~~ | ~~All endpoints~~ | **RESOLVED** - slowapi rate limiting added |
-| **Missing security headers** | MEDIUM | `nginx.conf` | Add CSP, X-Frame-Options, etc. |
+| ~~**Missing security headers**~~ | ~~MEDIUM~~ | ~~`nginx.conf`~~ | **RESOLVED** - X-Frame-Options, X-Content-Type-Options, etc. added |
 | **No HTTPS** | HIGH | Docker config | Add TLS termination |
 
 ### OWASP Top 10 Assessment
@@ -198,8 +198,8 @@ CREATE TABLE settings (
 | A1: Broken Access Control | VULNERABLE | No auth, anyone can access all data |
 | A2: Cryptographic Failures | VULNERABLE | Exposed API key, unencrypted DB |
 | A3: Injection | PROTECTED | SQLAlchemy ORM parameterizes queries |
-| A4: Insecure Design | PARTIAL | No rate limiting, weak validation |
-| A5: Security Misconfiguration | VULNERABLE | No security headers |
+| A4: Insecure Design | PARTIAL | Rate limiting added, weak validation |
+| A5: Security Misconfiguration | PARTIAL | Security headers added to nginx |
 | A6: Vulnerable Components | REVIEW | No automated scanning |
 | A7: Authentication Failures | VULNERABLE | Zero authentication |
 | A8: Software Integrity | PARTIAL | Lock files present |
@@ -214,9 +214,9 @@ CREATE TABLE settings (
 
 **Short-term (1-2 weeks):**
 3. Add file content validation using `python-magic`
-4. Implement rate limiting with `slowapi`
+4. ~~Implement rate limiting with `slowapi`~~ **DONE**
 5. Restrict CORS methods/headers
-6. Add security headers to nginx
+6. ~~Add security headers to nginx~~ **DONE**
 
 **Medium-term (1 month):**
 7. Implement JWT authentication
@@ -310,10 +310,10 @@ Tests run automatically on every push/PR via GitHub Actions:
 
 | Item | Impact | Effort | Location |
 |------|--------|--------|----------|
-| No request size limits | DoS potential | Low | `app.py` |
+| ~~No request size limits~~ | ~~DoS potential~~ | ~~Low~~ | **RESOLVED** - MAX_UPLOAD_SIZE configurable |
 | Unused Settings table | Dead code | Low | `database.py:85-91` |
 | Debug object on window | Info disclosure | Low | `transcript-panel.tsx:378-387` |
-| Hardcoded timeouts | Inflexibility | Low | `vite.config.ts`, `nginx.conf` |
+| ~~Hardcoded values~~ | ~~Inflexibility~~ | ~~Low~~ | **RESOLVED** - centralized config.py with env vars |
 | Missing loading states | UX | Medium | Various components |
 
 ### Code Quality Metrics

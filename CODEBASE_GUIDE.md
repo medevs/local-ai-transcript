@@ -31,7 +31,6 @@ local-ai-transcript-app/
 │       │   └── utils.ts           # Utility functions (cn, etc.)
 │       ├── hooks/
 │       │   ├── use-audio-recorder.ts      # Web Audio API recording
-│       │   ├── use-keyboard-shortcuts.ts  # Shortcut registration system
 │       │   └── use-mobile.ts              # Mobile detection
 │       └── components/
 │           ├── site-header.tsx
@@ -45,8 +44,7 @@ local-ai-transcript-app/
 │           │   ├── voice-recorder.tsx     # Recording UI with waveform
 │           │   ├── input-methods.tsx      # Upload/paste tabs
 │           │   ├── transcript-results.tsx # Display results
-│           │   ├── export-dialog.tsx      # Export format selection
-│           │   └── settings-section.tsx   # AI settings panel
+│           │   └── export-dialog.tsx      # Export format selection
 │           └── ui/
 │               ├── avatar.tsx
 │               ├── badge.tsx
@@ -68,16 +66,17 @@ local-ai-transcript-app/
 │               └── tooltip.tsx
 ├── backend/
 │   ├── app.py                     # FastAPI routes (22 endpoints)
+│   ├── config.py                  # Centralized configuration (env vars)
 │   ├── transcription.py           # Whisper + LLM service
 │   ├── database.py                # SQLAlchemy models and CRUD
 │   ├── embeddings.py              # RAG: Ollama embeddings + text chunking
 │   ├── system_prompt.txt          # Default LLM cleaning prompt
 │   ├── pyproject.toml             # Dependencies and tool config
 │   ├── uv.lock                    # Dependency lock file
-│   ├── Dockerfile                 # Python 3.12 image
+│   ├── Dockerfile                 # Python 3.12 image (non-root user)
 │   ├── .env.example               # Configuration template
 │   ├── pytest.ini                 # Test configuration
-│   ├── transcripts.db             # SQLite database (generated)
+│   ├── data/transcripts.db        # SQLite database (generated)
 │   └── tests/                     # Backend test suite (86 tests)
 │       ├── conftest.py            # Fixtures: test DB, mocked services
 │       ├── test_database.py       # Database CRUD tests (26)
@@ -120,7 +119,6 @@ local-ai-transcript-app/
 | `src/lib/history.ts` | Transcript CRUD via API, event dispatching |
 | `src/lib/utils.ts` | Utility functions (className merge) |
 | `src/hooks/use-audio-recorder.ts` | Web Audio API for recording, waveform, volume |
-| `src/hooks/use-keyboard-shortcuts.ts` | Global keyboard shortcut system |
 | `src/components/ui/*` | Radix UI-based primitives |
 
 ### Backend
@@ -128,12 +126,13 @@ local-ai-transcript-app/
 | File | Purpose |
 |------|---------|
 | `app.py` | FastAPI application with 22 API endpoints |
+| `config.py` | Centralized configuration from environment variables |
 | `transcription.py` | `TranscriptionService` class (Whisper STT + LLM client) |
 | `database.py` | SQLAlchemy models (`Transcript`, `ChatMessage`, `TranscriptChunk`, `Setting`) and CRUD |
 | `embeddings.py` | `EmbeddingService` class (Ollama embeddings + text chunking for RAG) |
 | `system_prompt.txt` | Default prompt for LLM text cleaning |
 | `pyproject.toml` | Python dependencies, Ruff/Black configuration |
-| `.env.example` | Environment variable template |
+| `.env.example` | Environment variable template (comprehensive) |
 
 ### API Endpoints (22 total)
 
@@ -218,7 +217,7 @@ CREATE VIRTUAL TABLE chunk_embeddings USING vec0(
 | File | Purpose |
 |------|---------|
 | `frontend/vite.config.ts` | Vite plugins, path alias `@` → `src`, dev proxy `/api` → `:8000` |
-| `frontend/nginx.conf` | Production: API proxy, SPA routing, gzip, caching |
+| `frontend/nginx.conf` | Production: API proxy, SPA routing, gzip, caching, security headers |
 | `frontend/Dockerfile` | Multi-stage build: Node builder → Nginx production |
 | `backend/pyproject.toml` | Python dependencies, Ruff lint rules, Black config |
 | `backend/Dockerfile` | Python 3.12 + FFmpeg + uv package manager |
