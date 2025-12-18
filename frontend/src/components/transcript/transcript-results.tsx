@@ -60,7 +60,24 @@ export function TranscriptResults({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Original</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium">Original</CardTitle>
+              {rawText && !isProcessing && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => copyToClipboard(rawText, false)}
+                  className="h-7 px-2 text-muted-foreground hover:text-foreground"
+                >
+                  {isCopiedRaw ? (
+                    <IconCheck className="h-3.5 w-3.5 mr-1" />
+                  ) : (
+                    <IconCopy className="h-3.5 w-3.5 mr-1" />
+                  )}
+                  <span className="text-xs">{isCopiedRaw ? "Copied" : "Copy"}</span>
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {isProcessing && !rawText ? (
@@ -69,23 +86,9 @@ export function TranscriptResults({
                 Transcribing...
               </div>
             ) : (
-              <div className="group relative">
-                <p className="whitespace-pre-wrap text-sm leading-relaxed opacity-80">
-                  {rawText}
-                </p>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => rawText && copyToClipboard(rawText, false)}
-                  className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  {isCopiedRaw ? (
-                    <IconCheck className="h-4 w-4" />
-                  ) : (
-                    <IconCopy className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed opacity-80">
+                {rawText}
+              </p>
             )}
           </CardContent>
         </Card>
@@ -97,10 +100,27 @@ export function TranscriptResults({
           )}
         >
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Sparkles className="h-3 w-3 text-primary" />
-              Cleaned
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Sparkles className="h-3 w-3 text-primary" />
+                Cleaned
+              </CardTitle>
+              {cleanedText && !isCleaningWithLLM && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => copyToClipboard(cleanedText, true)}
+                  className="h-7 px-2 text-muted-foreground hover:text-foreground"
+                >
+                  {isCopiedClean ? (
+                    <IconCheck className="h-3.5 w-3.5 mr-1" />
+                  ) : (
+                    <IconCopy className="h-3.5 w-3.5 mr-1" />
+                  )}
+                  <span className="text-xs">{isCopiedClean ? "Copied" : "Copy"}</span>
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {isCleaningWithLLM ? (
@@ -109,23 +129,9 @@ export function TranscriptResults({
                 Refining with AI...
               </div>
             ) : displayedCleanedText ? (
-              <div className="group relative">
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                  {displayedCleanedText}
-                </p>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => cleanedText && copyToClipboard(cleanedText, true)}
-                  className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  {isCopiedClean ? (
-                    <IconCheck className="h-4 w-4" />
-                  ) : (
-                    <IconCopy className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                {displayedCleanedText}
+              </p>
             ) : (
               <p className="text-sm text-muted-foreground italic">
                 Waiting for cleaned output...
