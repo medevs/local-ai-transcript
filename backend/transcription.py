@@ -7,6 +7,7 @@ Supports optional fallback provider for reliability.
 """
 
 import logging
+import re
 from pathlib import Path
 
 from faster_whisper import WhisperModel
@@ -98,7 +99,23 @@ class TranscriptionService:
         )
 
         text = " ".join([segment.text for segment in segments]).strip()
+
+        # Fix common Whisper spacing issues
+        text = self._fix_whisper_spacing(text)
+
         logger.info(f"Transcription complete: {len(text)} characters")
+        return text
+
+    def _fix_whisper_spacing(self, text: str) -> str:
+        """Fix spacing issues from Whisper tokenizer."""
+        # Remove spaces before punctuation
+        text = re.sub(r"\s+([.,;:!?'\"])", r"\1", text)
+        # Fix spaces after opening quotes/brackets
+        text = re.sub(r"(['\"\(])\s+", r"\1", text)
+        # Fix hyphenated words (full -stack -> full-stack)
+        text = re.sub(r"(\w)\s+-\s*(\w)", r"\1-\2", text)
+        # Fix spaces before file extensions or dots in names
+        text = re.sub(r"(\w)\s+\.(\w)", r"\1.\2", text)
         return text
 
     def get_default_system_prompt(self) -> str:
@@ -220,14 +237,14 @@ class TranscriptionService:
         else:
             context_section = "No transcript context available."
 
-        system_prompt = f"""You are a precise assistant that answers questions ONLY based on the provided transcript context.
+        system_prompt = f"""You're chatting with someone about their transcript. Be casual and brief - like talking to a friend.
 
-RULES:
-1. ONLY use information from the context below to answer
-2. If the answer is not in the context, say "I couldn't find that information in the transcript"
-3. Quote relevant parts of the transcript when helpful
-4. Be concise and direct
-5. Never make up information not present in the context
+Rules:
+- Only answer from the transcript below. If it's not there, say "I don't see that mentioned"
+- Keep it SHORT - 1-2 sentences is usually enough
+- Sound natural, not robotic
+- No bullet points unless they ask for a list
+- Answer directly - don't restate the question
 
 {context_section}"""
 

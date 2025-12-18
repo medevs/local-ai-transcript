@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import tempfile
@@ -564,10 +565,30 @@ async def chat_stream(
                 stream=True,
             )
 
-            for chunk in response:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    content = chunk.choices[0].delta.content
-                    yield {"event": "message", "data": content}
+            # Use a queue to pass chunks from sync iterator to async generator
+            queue: asyncio.Queue[str | None] = asyncio.Queue()
+            loop = asyncio.get_running_loop()  # Get loop BEFORE starting thread
+
+            def read_chunks() -> None:
+                """Read chunks from sync iterator and put them in queue."""
+                try:
+                    for chunk in response:
+                        if chunk.choices and chunk.choices[0].delta.content:
+                            content = chunk.choices[0].delta.content
+                            loop.call_soon_threadsafe(queue.put_nowait, content)
+                finally:
+                    # Signal completion
+                    loop.call_soon_threadsafe(queue.put_nowait, None)
+
+            # Run sync iteration in thread pool
+            loop.run_in_executor(None, read_chunks)
+
+            # Yield chunks as they arrive
+            while True:
+                content = await queue.get()
+                if content is None:
+                    break
+                yield {"event": "message", "data": content}
 
             yield {"event": "done", "data": ""}
 
@@ -575,7 +596,13 @@ async def chat_stream(
             logger.error(f"Stream chat error: {e}")
             yield {"event": "error", "data": str(e)}
 
-    return EventSourceResponse(generate())
+    return EventSourceResponse(
+        generate(),
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache",
+        },
+    )
 
 
 # ============================================================================
