@@ -3,7 +3,7 @@
 import * as React from "react"
 import ReactMarkdown from "react-markdown"
 import { Button } from "@/components/ui/button"
-import { getTranscripts, type TranscriptItem } from "@/lib/history"
+import { getTranscripts, getTranscriptById, type TranscriptItem } from "@/lib/history"
 import { streamChatMessage, sendChatMessage, ApiError, type ChatOptions } from "@/lib/api-client"
 import { IconSend, IconTrash, IconUser, IconRobot, IconLoader2 } from "@tabler/icons-react"
 
@@ -14,35 +14,73 @@ export function ChatbotPanel() {
   const [input, setInput] = React.useState("")
   const [loading, setLoading] = React.useState(false)
   const [streamingContent, setStreamingContent] = React.useState("")
-  const [latestTranscript, setLatestTranscript] = React.useState<TranscriptItem | null>(null)
+  const [currentTranscript, setCurrentTranscript] = React.useState<TranscriptItem | null>(null)
+  const currentTranscriptIdRef = React.useRef<string | null>(null)
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const abortRef = React.useRef<(() => void) | null>(null)
 
-  // Load latest transcript for context
+  // Load transcript based on URL hash and clear messages when transcript changes
   React.useEffect(() => {
-    const loadLatest = async () => {
-      const transcripts = await getTranscripts()
-      setLatestTranscript(transcripts[0] || null)
-    }
-    loadLatest()
+    const loadTranscript = async () => {
+      const match = window.location.hash.match(/^#t-(.+)/)
+      const newId = match ? match[1] : null
 
-    const handler = () => loadLatest()
-    window.addEventListener("transcripts:update", handler)
-    return () => window.removeEventListener("transcripts:update", handler)
+      // If transcript changed, clear messages
+      if (newId !== currentTranscriptIdRef.current) {
+        setMessages([])
+        setStreamingContent("")
+        currentTranscriptIdRef.current = newId
+      }
+
+      if (newId) {
+        // Load specific transcript from hash
+        const transcript = await getTranscriptById(newId)
+        setCurrentTranscript(transcript ?? null)
+      } else {
+        // No transcript selected, get latest for new transcripts
+        const transcripts = await getTranscripts()
+        setCurrentTranscript(transcripts[0] || null)
+      }
+    }
+
+    loadTranscript()
+
+    // Listen for hash changes (transcript selection)
+    const handleHashChange = () => loadTranscript()
+    window.addEventListener("hashchange", handleHashChange)
+
+    // Listen for transcript updates (new/edit/delete)
+    const handleUpdate = () => loadTranscript()
+    window.addEventListener("transcripts:update", handleUpdate)
+
+    // Listen for new transcript request (clear everything)
+    const handleNew = () => {
+      setMessages([])
+      setStreamingContent("")
+      currentTranscriptIdRef.current = null
+      loadTranscript()
+    }
+    window.addEventListener("transcripts:new", handleNew)
+
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange)
+      window.removeEventListener("transcripts:update", handleUpdate)
+      window.removeEventListener("transcripts:new", handleNew)
+    }
   }, [])
 
   // Build chat options for RAG
   const chatOptions = React.useMemo((): ChatOptions => {
-    if (!latestTranscript) {
+    if (!currentTranscript) {
       return {}
     }
     return {
-      transcriptId: latestTranscript.id,
-      context: latestTranscript.cleanedText || latestTranscript.rawText || "",
+      transcriptId: currentTranscript.id,
+      context: currentTranscript.cleanedText || currentTranscript.rawText || "",
       includeHistory: true,
     }
-  }, [latestTranscript])
+  }, [currentTranscript])
 
   // Auto-scroll to bottom
   React.useEffect(() => {
@@ -146,8 +184,8 @@ export function ChatbotPanel() {
           <div>
             <h3 className="text-sm font-semibold">AI Assistant</h3>
             <p className="text-xs text-muted-foreground truncate max-w-[180px]">
-              {latestTranscript
-                ? latestTranscript.title
+              {currentTranscript
+                ? currentTranscript.title
                 : "No transcript loaded"}
             </p>
           </div>

@@ -184,6 +184,9 @@ export function TranscriptPanel() {
       // START
       if (isProcessing || isCleaningWithLLM) return;
 
+      // Clear URL hash to deselect current transcript
+      window.location.hash = "";
+
       // Reset all state for new recording
       setRawText(null);
       setCleanedText(null);
@@ -203,13 +206,19 @@ export function TranscriptPanel() {
       setError("Please select an audio file");
       return;
     }
+
+    // Clear URL hash to deselect current transcript
+    window.location.hash = "";
+
     setError(null);
     setRawText(null);
     setCleanedText(null);
     setDisplayedCleanedText(null);
+    setCurrentTranscriptId(null);
+    setCurrentTranscriptTitle("Transcript");
     setIsProcessing(true);
     setIsCleaningWithLLM(false);
-    
+
     const blob = new Blob([file], { type: file.type });
     void uploadAudio(blob);
   };
@@ -217,8 +226,14 @@ export function TranscriptPanel() {
   const handleTextSubmit = React.useCallback(
     async (text: string) => {
       if (!text.trim()) return;
+
+      // Clear URL hash to deselect current transcript
+      window.location.hash = "";
+
       try {
         setError(null);
+        setCurrentTranscriptId(null);
+        setCurrentTranscriptTitle("Transcript");
         setRawText(text);
         setCleanedText(null);
         setDisplayedCleanedText(null);
