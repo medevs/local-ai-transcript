@@ -580,5 +580,3 @@ def search_similar_chunks(
     except Exception as e:
         logger.error(f"Vector search failed: {e}")
         return []
-
-

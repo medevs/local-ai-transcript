@@ -91,7 +91,9 @@ DEFAULT_AUDIO_TYPES = {
     "audio/x-m4a",
 }
 _custom_types = os.getenv("ALLOWED_AUDIO_TYPES")
-ALLOWED_AUDIO_TYPES = set(_parse_list(_custom_types, [])) if _custom_types else DEFAULT_AUDIO_TYPES
+ALLOWED_AUDIO_TYPES = (
+    set(_parse_list(_custom_types, [])) if _custom_types else DEFAULT_AUDIO_TYPES
+)
 
 # =============================================================================
 # Database Configuration

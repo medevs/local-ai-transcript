@@ -250,7 +250,7 @@ Rules:
 
         # Add chat history (limit configurable via MAX_CHAT_HISTORY env var)
         if chat_history:
-            for msg in chat_history[-config.MAX_CHAT_HISTORY:]:
+            for msg in chat_history[-config.MAX_CHAT_HISTORY :]:
                 messages.append(
                     {
                         "role": msg["role"],
