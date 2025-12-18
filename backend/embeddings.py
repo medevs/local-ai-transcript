@@ -5,17 +5,18 @@ Uses Ollama's nomic-embed-text model for local embeddings.
 """
 
 import logging
-import struct
 
 import httpx
 
+import config
+
 logger = logging.getLogger(__name__)
 
-# Chunking configuration
-CHUNK_SIZE = 500  # Characters per chunk
-CHUNK_OVERLAP = 100  # Overlap between chunks
-EMBEDDING_DIM = 768  # nomic-embed-text dimension
-TOP_K_CHUNKS = 5  # Number of chunks to retrieve
+# Chunking configuration (from centralized config)
+CHUNK_SIZE = config.CHUNK_SIZE
+CHUNK_OVERLAP = config.CHUNK_OVERLAP
+EMBEDDING_DIM = config.EMBEDDING_DIM
+TOP_K_CHUNKS = config.TOP_K_CHUNKS
 
 
 class EmbeddingService:
@@ -50,10 +51,6 @@ class EmbeddingService:
             logger.warning(f"Embedding service unavailable: {e}")
             self._available = False
             return False
-
-    def reset_availability(self) -> None:
-        """Reset availability cache to force re-check."""
-        self._available = None
 
     async def embed_text(self, text: str) -> list[float]:
         """Get embedding for a single text string."""
@@ -146,14 +143,3 @@ class EmbeddingService:
             start = end - overlap
 
         return chunks
-
-    @staticmethod
-    def embedding_to_bytes(embedding: list[float]) -> bytes:
-        """Convert embedding list to bytes for sqlite-vec storage."""
-        return struct.pack(f"{len(embedding)}f", *embedding)
-
-    @staticmethod
-    def bytes_to_embedding(data: bytes) -> list[float]:
-        """Convert bytes back to embedding list."""
-        count = len(data) // 4  # 4 bytes per float
-        return list(struct.unpack(f"{count}f", data))

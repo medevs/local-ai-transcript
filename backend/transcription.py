@@ -13,6 +13,8 @@ from pathlib import Path
 from faster_whisper import WhisperModel
 from openai import OpenAI
 
+import config
+
 logger = logging.getLogger(__name__)
 
 # Edit system_prompt.txt to change how the LLM cleans transcriptions
@@ -85,10 +87,6 @@ class TranscriptionService:
             self.fallback_provider = LLMProvider(
                 fallback_base_url, fallback_api_key, fallback_model, "Fallback LLM"
             )
-
-        # For backwards compatibility
-        self.llm_client = self.primary_provider.client
-        self.llm_model = llm_model
 
     def transcribe(self, audio_file: str) -> str:
         """Transcribe audio file to text using Whisper."""
@@ -250,10 +248,9 @@ Rules:
 
         messages = [{"role": "system", "content": system_prompt}]
 
-        # Add chat history (limit to prevent token overflow)
-        max_history_messages = 10
+        # Add chat history (limit configurable via MAX_CHAT_HISTORY env var)
         if chat_history:
-            for msg in chat_history[-max_history_messages:]:
+            for msg in chat_history[-config.MAX_CHAT_HISTORY:]:
                 messages.append(
                     {
                         "role": msg["role"],
@@ -282,17 +279,3 @@ Rules:
                 continue
 
         raise RuntimeError("No LLM providers available")
-
-    def transcribe_file(self, audio_file_path: str, use_llm: bool = True) -> dict:
-        """Transcribe file and optionally clean with LLM."""
-        raw_text = self.transcribe(audio_file_path)
-
-        result = {"raw_text": raw_text}
-
-        if use_llm and raw_text:
-            cleaned_text = self.clean_with_llm(raw_text)
-            result["cleaned_text"] = cleaned_text
-        else:
-            result["cleaned_text"] = raw_text
-
-        return result

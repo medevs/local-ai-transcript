@@ -22,10 +22,14 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 
+import config
+
 logger = logging.getLogger(__name__)
 
-# Database file location (in backend directory)
-DB_PATH = Path(__file__).parent / "transcripts.db"
+# Database file location (configurable via DATABASE_PATH env var)
+DB_PATH = Path(config.DATABASE_PATH)
+# Ensure parent directory exists
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
@@ -192,16 +196,6 @@ def init_db():
     with engine.connect() as conn:
         _init_fts5(conn)
         logger.info("FTS5 full-text search initialized")
-
-
-def rebuild_fts_index() -> None:
-    """Rebuild FTS index from existing transcripts."""
-    with engine.connect() as conn:
-        conn.execute(
-            text("INSERT INTO transcripts_fts(transcripts_fts) VALUES('rebuild')")
-        )
-        conn.commit()
-        logger.info("FTS5 index rebuilt")
 
 
 def get_db():
@@ -588,10 +582,3 @@ def search_similar_chunks(
         return []
 
 
-def get_transcript_chunk_count(db: Session, transcript_id: str) -> int:
-    """Get the number of chunks for a transcript."""
-    return (
-        db.query(TranscriptChunk)
-        .filter(TranscriptChunk.transcript_id == transcript_id)
-        .count()
-    )

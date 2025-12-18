@@ -6,7 +6,6 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Annotated, NoReturn
 
-from dotenv import load_dotenv
 from fastapi import (
     BackgroundTasks,
     Depends,
@@ -26,6 +25,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
+import config
 from database import (
     SessionLocal,
     add_message,
@@ -48,14 +48,12 @@ from database import (
 from embeddings import EmbeddingService
 from transcription import TranscriptionService
 
-load_dotenv()
-
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, config.LOG_LEVEL, logging.INFO),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
@@ -94,11 +92,6 @@ class TranscriptUpdate(BaseModel):
 class MessageCreate(BaseModel):
     role: str
     content: str
-
-
-class ErrorResponse(BaseModel):
-    success: bool = False
-    error: dict
 
 
 service: TranscriptionService | None = None
@@ -163,13 +156,10 @@ app = FastAPI(title="AI Transcript App", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS for localhost development
+# CORS middleware (origins configurable via CORS_ORIGINS env var)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-    ],
+    allow_origins=config.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -339,24 +329,13 @@ async def add_transcript_message(
 # Transcription & LLM Endpoints
 # ============================================================================
 
-MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB
-ALLOWED_AUDIO_TYPES = {
-    "audio/webm",
-    "audio/wav",
-    "audio/wave",
-    "audio/x-wav",
-    "audio/mp3",
-    "audio/mpeg",
-    "audio/ogg",
-    "audio/flac",
-    "audio/m4a",
-    "audio/mp4",
-    "audio/x-m4a",
-}
+# Upload limits (configurable via env vars)
+MAX_UPLOAD_SIZE = config.MAX_UPLOAD_SIZE
+ALLOWED_AUDIO_TYPES = config.ALLOWED_AUDIO_TYPES
 
 
 @app.post("/api/transcribe")
-@limiter.limit("5/minute")
+@limiter.limit(config.RATE_LIMIT_TRANSCRIBE)
 async def transcribe_audio(request: Request, audio: Annotated[UploadFile, File()]):
     if not service:
         api_error("SERVICE_NOT_READY", "Service not ready, still initializing", 503)
@@ -402,7 +381,7 @@ async def transcribe_audio(request: Request, audio: Annotated[UploadFile, File()
 
 
 @app.post("/api/clean")
-@limiter.limit("20/minute")
+@limiter.limit(config.RATE_LIMIT_CLEAN)
 async def clean_text(request: Request, data: CleanRequest):
     if not service:
         api_error("SERVICE_NOT_READY", "Service not ready", 503)
@@ -422,7 +401,7 @@ async def clean_text(request: Request, data: CleanRequest):
 
 
 @app.post("/api/generate-title")
-@limiter.limit("30/minute")
+@limiter.limit(config.RATE_LIMIT_CHAT)
 async def generate_title(request: Request, data: GenerateTitleRequest):
     """Generate a short 2-3 word title for transcript text using LLM."""
     if not service:
