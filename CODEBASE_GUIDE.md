@@ -83,11 +83,6 @@ local-ai-transcript-app/
 │       ├── test_transcription.py  # TranscriptionService tests (20)
 │       ├── test_api_transcripts.py # Transcript API tests (21)
 │       └── test_api_ai.py         # AI endpoint tests (14)
-├── .devcontainer/
-│   ├── Dockerfile
-│   ├── devcontainer.json
-│   ├── docker-compose.yml
-│   └── post-create.sh
 ├── .github/
 │   └── workflows/
 │       └── ci.yml                 # GitHub Actions CI pipeline
