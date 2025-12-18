@@ -384,13 +384,12 @@ export function streamChatMessage(
         for (const line of lines) {
           if (line.startsWith("event: ")) {
             currentEvent = line.slice(7).trim();
+          } else if (line.startsWith("data: ")) {
+            const data = line.slice(6);
             if (currentEvent === "done") {
               onDone();
               return;
-            }
-          } else if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (currentEvent === "error") {
+            } else if (currentEvent === "error") {
               onError(data || "Unknown error");
               return;
             } else if (data) {
