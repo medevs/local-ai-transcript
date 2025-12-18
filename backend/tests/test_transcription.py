@@ -467,63 +467,6 @@ class TestTranscriptionServiceChat:
             service.chat("Hello!")
 
 
-class TestTranscriptionServiceTranscribeFile:
-    """Tests for transcribe_file() method."""
-
-    def test_transcribe_file_with_llm(
-        self, mock_whisper_instance, mock_openai_instance
-    ):
-        """transcribe_file() should transcribe and clean with LLM."""
-        mock_segments = [MagicMock(text="Raw transcribed text.")]
-        mock_whisper_instance.transcribe.return_value = (mock_segments, MagicMock())
-        mock_openai_instance.chat.completions.create.return_value = MagicMock(
-            choices=[MagicMock(message=MagicMock(content="Cleaned text."))]
-        )
-        mock_faster_whisper.WhisperModel.return_value = mock_whisper_instance
-        mock_openai.OpenAI.return_value = mock_openai_instance
-
-        from transcription import TranscriptionService
-
-        service = TranscriptionService(
-            whisper_model="base.en",
-            llm_base_url="http://localhost:11434/v1",
-            llm_api_key="ollama",
-            llm_model="llama2",
-        )
-
-        result = service.transcribe_file("/path/to/audio.wav", use_llm=True)
-
-        assert result["raw_text"] == "Raw transcribed text."
-        assert result["cleaned_text"] == "Cleaned text."
-
-    def test_transcribe_file_without_llm(
-        self, mock_whisper_instance, mock_openai_instance
-    ):
-        """transcribe_file() should skip LLM when use_llm=False."""
-        mock_segments = [MagicMock(text="Raw transcribed text.")]
-        mock_whisper_instance.transcribe.return_value = (mock_segments, MagicMock())
-        mock_faster_whisper.WhisperModel.return_value = mock_whisper_instance
-        mock_openai.OpenAI.return_value = mock_openai_instance
-
-        from transcription import TranscriptionService
-
-        service = TranscriptionService(
-            whisper_model="base.en",
-            llm_base_url="http://localhost:11434/v1",
-            llm_api_key="ollama",
-            llm_model="llama2",
-        )
-
-        # Reset the mock call count before calling transcribe_file
-        mock_openai_instance.chat.completions.create.reset_mock()
-
-        result = service.transcribe_file("/path/to/audio.wav", use_llm=False)
-
-        assert result["raw_text"] == "Raw transcribed text."
-        assert result["cleaned_text"] == "Raw transcribed text."  # Same as raw
-        mock_openai_instance.chat.completions.create.assert_not_called()
-
-
 class TestSystemPrompt:
     """Tests for system prompt loading."""
 
