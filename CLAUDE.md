@@ -69,6 +69,28 @@ This project currently has **0% test coverage**. When adding new features:
 - Backend: Use pytest + pytest-asyncio + httpx
 - Frontend: Use Vitest + React Testing Library
 
+## Pre-Commit Verification Rule
+
+**IMPORTANT**: Before committing any changes, ALWAYS run these checks locally:
+
+### Backend
+```bash
+cd backend
+uv run pytest --tb=short -v    # All tests must pass
+uv run ruff check .            # No linting errors
+uv run black --check .         # Code must be formatted
+```
+
+### Frontend
+```bash
+cd frontend
+npm run lint                   # No linting errors
+npx tsc --noEmit              # No TypeScript errors
+npm run build                  # Build must succeed
+```
+
+**Never commit without verifying locally first.** CI failures waste time and pollute git history.
+
 ## Git Commit Rules
 
 - **Commit messages must be 15 words or less**
